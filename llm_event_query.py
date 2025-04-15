@@ -759,12 +759,12 @@ def analyze_historical_event(event_date: str, ticker: str, days_to_analyze: int 
         try:
             df = fetch_market_data(ticker, event_date, end_date)
             
-        if df.empty:
+            if df.empty:
                 # Handle cryptocurrencies specially
                 if any(crypto_prefix in ticker for crypto_prefix in ['BTC', 'ETH', 'XRP', 'LTC']):
                     fallback_ticker = 'BTC-USD'  # Use BTC as a proxy for crypto market
                     print(f"⚠️ No data for {ticker}. Trying fallback ticker {fallback_ticker}...")
-            df = fetch_market_data(fallback_ticker, event_date, end_date)
+                    df = fetch_market_data(fallback_ticker, event_date, end_date)
                     if not df.empty:
                         ticker = fallback_ticker
                         print(f"✓ Using {ticker} as proxy for crypto market")
@@ -774,7 +774,7 @@ def analyze_historical_event(event_date: str, ticker: str, days_to_analyze: int 
                     fallback_ticker = 'SPY'  # Use SPY as general market proxy
                     print(f"⚠️ No data for {ticker}. Trying market index {fallback_ticker}...")
                     df = fetch_market_data(fallback_ticker, event_date, end_date)
-            if not df.empty:
+                    if not df.empty:
                         ticker = fallback_ticker
                         print(f"✓ Using {ticker} as general market proxy")
                 
@@ -913,7 +913,7 @@ def generate_event_impact_explanation(event_details: dict, similar_events=None) 
         immediate_reaction = f"{ticker} moved {'upward' if price_change_pct > 0 else 'downward'} slightly"
     elif abs(price_change_pct) < 7:  # Use price_change_pct instead of price_change
         immediate_reaction = f"{ticker} responded with a {'notable rise' if price_change_pct > 0 else 'notable decline'}"
-        else:
+    else:
         immediate_reaction = f"{ticker} experienced a {'significant rally' if price_change_pct > 0 else 'significant sell-off'}"
     
     # Add volatility context
