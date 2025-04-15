@@ -11,6 +11,19 @@ from llm_event_query import process_query, create_new_session, get_session
 from rss_ingestor import fetch_rss_headlines, FINANCIAL_FEEDS
 from llm_event_classifier import classify_macro_event
 
+# Load API keys from Streamlit secrets
+if 'OPENAI_API_KEY' in st.secrets:
+    os.environ['OPENAI_API_KEY'] = st.secrets['OPENAI_API_KEY']
+    print("Loaded OpenAI API key from Streamlit secrets")
+
+if 'FRED_API_KEY' in st.secrets:
+    os.environ['FRED_API_KEY'] = st.secrets['FRED_API_KEY']
+    print("Loaded FRED API key from Streamlit secrets")
+
+if 'CLOUD_STORAGE_API_KEY' in st.secrets:
+    os.environ['CLOUD_STORAGE_API_KEY'] = st.secrets['CLOUD_STORAGE_API_KEY']
+    print("Loaded Cloud Storage API key from Streamlit secrets")
+
 # Set page configuration
 st.set_page_config(
     page_title="Ooptions - Market Event Analysis",
