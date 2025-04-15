@@ -172,8 +172,9 @@ class OpenAIClassifier:
     def __init__(self, api_key: str, model: str = DEFAULT_MODEL):
         self.api_key = api_key
         self.model = model
-        # Set API key
-        openai.api_key = api_key
+        # Initialize client with API key
+        from openai import OpenAI
+        self.client = OpenAI(api_key=api_key)
     
     def classify(self, headline: Dict[str, Any], provided_macro_context: Dict[str, Any] = None) -> Dict[str, str]:
         """
@@ -306,86 +307,101 @@ class OpenAIClassifier:
                 user_message += "Given this news and macro context, would you BUY or SELL this stock? Justify your directional choice in your recommendation. "
                 user_message += "Return JSON in this format: {event_type, sentiment, sector, trade, direction}"
                 
-                response = openai.chat.completions.create(
-                    model="gpt-3.5-turbo",
-                    messages=[
-                        {
-                            "role": "system",
-                            "content": system_message
-                        },
-                        {
-                            "role": "user",
-                            "content": user_message
-                        }
-                    ],
-                    temperature=0.2,
-                    response_format={"type": "json_object"}
-                )
-                
-                # Parse the response
-                classification_text = response.choices[0].message.content
-                classification = json.loads(classification_text)
-                
-                # Ensure we have all required fields
-                required_fields = ["event_type", "sentiment", "sector"]
-                if all(key in classification for key in required_fields):
-                    result = {
-                        "event_type": classification["event_type"],
-                        "sentiment": classification["sentiment"],
-                        "sector": classification["sector"],
-                        "event_tags": event_tags  # Include the event tags in the result
-                    }
-                    
-                    # Extract direction if available
-                    if "direction" in classification:
-                        result["direction"] = classification["direction"].upper()  # Ensure it's uppercase (BUY/SELL)
-                    
-                    # Add trade information if available
-                    if "trade" in classification:
-                        # Handle different possible formats of trade data
-                        if isinstance(classification["trade"], dict):
-                            result["trade"] = classification["trade"]
-                            
-                            # Ensure the trade object has all required fields
-                            if not all(k in result["trade"] for k in ["ticker", "option_type"]):
-                                # Add defaults for missing fields
-                                if "ticker" not in result["trade"]:
-                                    result["trade"]["ticker"] = ticker
-                                if "option_type" not in result["trade"]:
-                                    # Infer option type from sentiment if possible
-                                    opt_type = "CALL" if result["sentiment"] == "Bullish" else "PUT"
-                                    result["trade"]["option_type"] = opt_type
-                                if "rationale" not in result["trade"]:
-                                    result["trade"]["rationale"] = f"Based on {result['sentiment']} sentiment for {result['sector']} sector"
-                            
-                            # Add direction to trade object if available at the top level
-                            if "direction" in result and "direction" not in result["trade"]:
-                                result["trade"]["direction"] = result["direction"]
-                        else:
-                            # If trade is a string or other format, create a standardized structure
-                            trade_info = str(classification["trade"])
-                            opt_type = "CALL" if result["sentiment"] == "Bullish" else "PUT"
-                            
-                            # Determine direction (default based on sentiment if not explicitly provided)
-                            direction = result.get("direction", "BUY")
-                            if not direction:
-                                direction = "BUY" if result["sentiment"] == "Bullish" else "SELL"
-                            
-                            result["trade"] = {
-                                "ticker": ticker,
-                                "option_type": opt_type,
-                                "strike": "ATM",  # At-the-money
-                                "expiry": "30d",  # 30 days out
-                                "direction": direction,
-                                "trade_type": "option",  # Default to option
-                                "rationale": trade_info
+                # Call OpenAI API
+                try:
+                    response = self.client.chat.completions.create(
+                        model=self.model,
+                        messages=[
+                            {
+                                "role": "system",
+                                "content": system_message
+                            },
+                            {
+                                "role": "user",
+                                "content": user_message
                             }
+                        ],
+                        temperature=0.2,
+                        response_format={"type": "json_object"}
+                    )
                     
-                    return result
-                else:
-                    missing = [field for field in required_fields if field not in classification]
-                    raise ValueError(f"Missing required classification fields: {', '.join(missing)}")
+                    # Parse the response
+                    classification_text = response.choices[0].message.content
+                    classification = json.loads(classification_text)
                     
+                    # Ensure we have all required fields
+                    required_fields = ["event_type", "sentiment", "sector"]
+                    if all(key in classification for key in required_fields):
+                        result = {
+                            "event_type": classification["event_type"],
+                            "sentiment": classification["sentiment"],
+                            "sector": classification["sector"],
+                            "event_tags": event_tags  # Include the event tags in the result
+                        }
+                        
+                        # Extract direction if available
+                        if "direction" in classification:
+                            result["direction"] = classification["direction"].upper()  # Ensure it's uppercase (BUY/SELL)
+                        
+                        # Add trade information if available
+                        if "trade" in classification:
+                            # Handle different possible formats of trade data
+                            if isinstance(classification["trade"], dict):
+                                result["trade"] = classification["trade"]
+                                
+                                # Ensure the trade object has all required fields
+                                if not all(k in result["trade"] for k in ["ticker", "option_type"]):
+                                    # Add defaults for missing fields
+                                    if "ticker" not in result["trade"]:
+                                        result["trade"]["ticker"] = ticker
+                                    if "option_type" not in result["trade"]:
+                                        # Infer option type from sentiment if possible
+                                        opt_type = "CALL" if result["sentiment"] == "Bullish" else "PUT"
+                                        result["trade"]["option_type"] = opt_type
+                                    if "rationale" not in result["trade"]:
+                                        result["trade"]["rationale"] = f"Based on {result['sentiment']} sentiment for {result['sector']} sector"
+                                
+                                # Add direction to trade object if available at the top level
+                                if "direction" in result and "direction" not in result["trade"]:
+                                    result["trade"]["direction"] = result["direction"]
+                            else:
+                                # If trade is a string or other format, create a standardized structure
+                                trade_info = str(classification["trade"])
+                                opt_type = "CALL" if result["sentiment"] == "Bullish" else "PUT"
+                                
+                                # Determine direction (default based on sentiment if not explicitly provided)
+                                direction = result.get("direction", "BUY")
+                                if not direction:
+                                    direction = "BUY" if result["sentiment"] == "Bullish" else "SELL"
+                                
+                                result["trade"] = {
+                                    "ticker": ticker,
+                                    "option_type": opt_type,
+                                    "strike": "ATM",  # At-the-money
+                                    "expiry": "30d",  # 30 days out
+                                    "direction": direction,
+                                    "trade_type": "option",  # Default to option
+                                    "rationale": trade_info
+                                }
+                        
+                        return result
+                    else:
+                        missing = [field for field in required_fields if field not in classification]
+                        raise ValueError(f"Missing required classification fields: {', '.join(missing)}")
+                    
+                except Exception as e:
+                    retries += 1
+                    if retries >= MAX_RETRIES:
+                        print(f"Error classifying headline after {MAX_RETRIES} retries: {str(e)}")
+                        # Fall back to dummy classifier
+                        dummy_result = DummyClassifier().classify(headline, provided_macro_context)
+                        # Add event tags to the dummy result
+                        dummy_result["event_tags"] = event_tags
+                        return dummy_result
+                    
+                    print(f"API error (attempt {retries}/{MAX_RETRIES}): {str(e)}. Retrying in {RETRY_DELAY}s...")
+                    time.sleep(RETRY_DELAY)
+            
             except Exception as e:
                 retries += 1
                 if retries >= MAX_RETRIES:
@@ -396,7 +412,7 @@ class OpenAIClassifier:
                     dummy_result["event_tags"] = event_tags
                     return dummy_result
                 
-                print(f"API error (attempt {retries}/{MAX_RETRIES}): {str(e)}. Retrying in {RETRY_DELAY}s...")
+                print(f"Error in classification loop: {str(e)}. Retrying in {RETRY_DELAY}s...")
                 time.sleep(RETRY_DELAY)
         
         # If we get here, all retries failed

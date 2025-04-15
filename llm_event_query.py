@@ -47,8 +47,9 @@ import analysis_persistence as ap
 from rss_ingestor import fetch_rss_headlines
 import html
 
-# Use the same OpenAI API key from llm_event_classifier.py
-openai.api_key = OPENAI_API_KEY
+# Initialize OpenAI client with proper configuration for new SDK
+from openai import OpenAI
+client = OpenAI(api_key=OPENAI_API_KEY)
 
 # Define default model from environment or use a fallback
 DEFAULT_MODEL = os.getenv('OPENAI_MODEL', "gpt-3.5-turbo")
@@ -1471,7 +1472,7 @@ def call_openai_with_retry(model, messages, temperature=0.3, response_format=Non
             if response_format:
                 kwargs["response_format"] = response_format
                 
-            return openai.chat.completions.create(**kwargs)
+            return client.chat.completions.create(**kwargs)
             
         except openai.RateLimitError as e:
             wait_time = min(2 ** attempts * RETRY_DELAY_SECONDS, 60)  # Exponential backoff
