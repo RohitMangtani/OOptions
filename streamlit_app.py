@@ -1,138 +1,914 @@
 import streamlit as st
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 import traceback
-import json
 import time
-import pandas as pd
-import threading
+import uuid
+import json
+from dotenv import load_dotenv
 from llm_event_query import process_query, create_new_session, get_session
-from rss_ingestor import fetch_rss_headlines, FINANCIAL_FEEDS
-from llm_event_classifier import classify_macro_event
-
-# Load API keys from Streamlit secrets
-if 'OPENAI_API_KEY' in st.secrets:
-    os.environ['OPENAI_API_KEY'] = st.secrets['OPENAI_API_KEY']
-    print("Loaded OpenAI API key from Streamlit secrets")
-
-if 'FRED_API_KEY' in st.secrets:
-    os.environ['FRED_API_KEY'] = st.secrets['FRED_API_KEY']
-    print("Loaded FRED API key from Streamlit secrets")
-
-if 'CLOUD_STORAGE_API_KEY' in st.secrets:
-    os.environ['CLOUD_STORAGE_API_KEY'] = st.secrets['CLOUD_STORAGE_API_KEY']
-    print("Loaded Cloud Storage API key from Streamlit secrets")
+from rss_ingestor import fetch_rss_headlines
+from dateutil import parser
+import pytz
+import pandas as pd
+import base64
+import io
 
 # Set page configuration
 st.set_page_config(
-    page_title="Ooptions - Market Event Analysis",
-    page_icon="📈",
-    layout="wide"
+    page_title="Option Bot - Market Terminal",
+    page_icon="🤖",
+    layout="wide",
+    initial_sidebar_state="collapsed"
 )
 
-# Custom CSS to fix font colors and improve visibility
+# Load environment variables
+load_dotenv()
+
+# JavaScript for draggable and resizable windows
+st.markdown("""
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://code.jquery.com/ui/1.13.2/jquery-ui.min.js"></script>
+<script>
+$(document).ready(function() {
+    // Make widgets draggable and resizable
+    $('.widget-container').draggable({
+        handle: '.widget-header',
+        containment: 'parent',
+        snap: true,
+        grid: [10, 10]
+    }).resizable({
+        minHeight: 200,
+        minWidth: 300,
+        handles: 'all',
+        containment: 'parent'
+    });
+    
+    // Close widget functionality
+    $('.widget-close').on('click', function() {
+        $(this).closest('.widget-container').remove();
+    });
+    
+    // Minimize widget functionality
+    $('.widget-minimize').on('click', function() {
+        const content = $(this).closest('.widget-container').find('.widget-content');
+        content.toggle();
+    });
+});
+</script>
+""", unsafe_allow_html=True)
+
+# Apply custom styling for a Bloomberg terminal look
 st.markdown("""
 <style>
-    /* Main app styling */
+    /* Main app background - dark with subtle texture */
     .stApp {
-        background-color: #0e1117;
+        background-color: #121212;
         color: #ffffff;
     }
     
-    /* Improve button contrast */
-    .stButton button {
-        background-color: #1e293b;
-        color: white;
-        border: 1px solid #334155;
+    /* Headers */
+    h1, h2, h3, h4, h5, h6 {
+        font-family: 'Courier New', monospace;
+        font-weight: 800;
+        color: #ffffff;
+        letter-spacing: 0.3px;
     }
     
-    /* Improve chat message visibility */
+    /* Welcome screen */
+    .welcome-screen {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background-color: #121212;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 9999;
+    }
+    
+    .welcome-text {
+        font-family: 'Courier New', monospace;
+        font-size: 4.5rem;
+        font-weight: 800;
+        color: #ffffff;
+        text-transform: uppercase;
+        letter-spacing: 1.5px;
+    }
+    
+    /* Main heading */
+    .main-heading {
+        font-size: 1.4rem;
+        font-weight: 800;
+        color: #ffffff;
+        margin-bottom: 6px;
+        padding-bottom: 3px;
+        border-bottom: 1px solid #333333;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    /* Logo style */
+    .logo-text {
+        font-size: 1.4rem;
+        font-weight: 800;
+        color: #ffffff;
+        text-transform: uppercase;
+        letter-spacing: 1.2px;
+        font-family: 'Courier New', monospace;
+    }
+    
+    .logo-subtitle {
+        font-size: 0.8rem;
+        color: #00ff00;
+        margin-top: -5px;
+        margin-bottom: 12px;
+        font-family: 'Courier New', monospace;
+        font-weight: 600;
+    }
+    
+    /* Message bubbles */
     .user-message {
-        background-color: #1e293b;
-        color: white;
-        padding: 15px;
-        border-radius: 10px;
-        margin-bottom: 10px;
+        background-color: #1a1a1a;
+        padding: 10px 12px;
+        border-radius: 4px;
+        margin-bottom: 6px;
+        color: #ffffff;
+        border-left: 2px solid #00ff00;
+        font-family: 'Courier New', monospace;
+        font-size: 0.95rem;
+        font-weight: 500;
+        letter-spacing: 0.2px;
     }
     
     .assistant-message {
-        background-color: #152238;
-        color: white;
-        padding: 15px;
-        border-radius: 10px;
+        background-color: #1a1a1a;
+        padding: 10px 12px;
+        border-radius: 4px;
+        margin-bottom: 6px;
+        color: #00ff00;
+        border-left: 2px solid #00ff00;
+        font-family: 'Courier New', monospace;
+        font-size: 0.95rem;
+        font-weight: 500;
+        letter-spacing: 0.2px;
+    }
+    
+    /* Sidebar styling */
+    [data-testid=stSidebar] {
+        background-color: #1a1a1a;
+        border-right: 1px solid #333333;
+        padding: 0.8rem;
+    }
+    
+    [data-testid=stSidebar] span {
+        color: #ffffff;
+        font-family: 'Courier New', monospace;
+        font-weight: 500;
+    }
+    
+    /* All standard text */
+    p, li, span, div, a {
+        color: #ffffff;
+        font-family: 'Courier New', monospace;
+        font-size: 0.95rem;
+        font-weight: 500;
+        letter-spacing: 0.2px;
+    }
+    
+    /* Buttons */
+    [data-testid=stButton] > button {
+        background-color: #1a1a1a;
+        color: #ffffff;
+        border-radius: 4px;
+        border: 1px solid #333333;
+        padding: 0.3rem 0.6rem;
+        font-weight: 600;
+        transition: all 0.2s ease;
+        font-family: 'Courier New', monospace;
+        text-transform: uppercase;
+        font-size: 0.8rem;
+        letter-spacing: 0.5px;
+    }
+    
+    [data-testid=stButton] > button:hover {
+        background-color: #333333;
+        color: #00ff00;
+    }
+    
+    /* Info box */
+    .info-box {
+        background-color: #1a1a1a;
+        border-left: 2px solid #00ff00;
+        padding: 10px;
         margin-bottom: 10px;
+        font-family: 'Courier New', monospace;
+        font-size: 0.9rem;
+        font-weight: 500;
+        border-radius: 4px;
+        letter-spacing: 0.2px;
     }
     
-    /* Fix sidebar text color */
-    .css-1d391kg {
-        color: white;
+    /* Input fields */
+    [data-testid=stTextInput] > div > div > input {
+        background-color: #1a1a1a;
+        color: #ffffff;
+        border-radius: 4px;
+        border: 1px solid #333333;
+        font-family: 'Courier New', monospace;
+        font-size: 0.95rem;
+        font-weight: 500;
+        padding: 8px 10px;
     }
     
-    /* Fix sidebar headers */
-    .sidebar .stMarkdown h1, .sidebar .stMarkdown h2, .sidebar .stMarkdown h3 {
-        color: white;
+    /* Chat input container */
+    [data-testid="stChatInput"] > div {
+        border-radius: 4px;
+        border: 1px solid #333333;
     }
     
-    /* Fix captions */
-    .stMarkdown p {
-        color: #e2e8f0;
+    [data-testid="stChatInput"] textarea {
+        background-color: #1a1a1a;
+        color: #ffffff;
+        font-family: 'Courier New', monospace;
+        font-size: 0.95rem;
+        font-weight: 500;
+        padding: 8px 10px;
     }
     
-    /* Fix info box */
-    .stAlert {
-        background-color: #1e293b;
-        color: white;
-    }
-    
-    /* Improve context hint visibility */
-    .context-hint {
-        color: #93c5fd;
-        font-size: 0.9em;
-        margin-bottom: 10px;
-    }
-    
-    /* News feed styles */
+    /* News feed styling */
     .news-card {
-        background-color: #1e293b;
-        padding: 15px;
-        border-radius: 10px;
-        margin-bottom: 10px;
+        background-color: #1a1a1a;
+        padding: 10px 12px;
+        margin-bottom: 6px;
+        color: #ffffff;
+        border-left: 2px solid #00ff00;
+        font-family: 'Courier New', monospace;
+        display: flex;
+        flex-direction: column;
+        border-radius: 4px;
     }
     
-    .news-source {
-        color: #93c5fd;
-        font-size: 0.8em;
-    }
-    
-    .news-time {
-        color: #64748b;
-        font-size: 0.8em;
+    .news-header {
+        display: flex;
+        justify-content: space-between;
+        border-bottom: 1px solid #333333;
+        padding-bottom: 5px;
+        margin-bottom: 6px;
     }
     
     .news-title {
-        font-size: 1.1em;
-        font-weight: bold;
-        margin: 5px 0;
+        font-size: 0.95rem;
+        font-weight: 700;
+        color: #ffffff;
+        margin-bottom: 4px;
+        flex-grow: 1;
+        font-family: 'Courier New', monospace;
+        letter-spacing: 0.2px;
     }
     
-    /* Alert card styling */
-    .alert-high {
-        border-left: 4px solid #ef4444;
-        background-color: rgba(239, 68, 68, 0.1);
+    .news-source {
+        font-size: 0.8rem;
+        font-weight: 700;
+        color: #00ff00;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-right: 6px;
+        min-width: 80px;
+        text-align: right;
+        font-family: 'Courier New', monospace;
     }
     
-    .alert-medium {
-        border-left: 4px solid #f59e0b;
-        background-color: rgba(245, 158, 11, 0.1);
+    .news-date {
+        font-size: 0.8rem;
+        color: #cccccc;
+        margin-bottom: 3px;
+        font-family: 'Courier New', monospace;
+        font-weight: 500;
     }
     
-    .alert-low {
-        border-left: 4px solid #10b981;
-        background-color: rgba(16, 185, 129, 0.1);
+    .news-summary {
+        font-size: 0.9rem;
+        color: #ffffff;
+        margin-bottom: 4px;
+        line-height: 1.4;
+        font-family: 'Courier New', monospace;
+        font-weight: 500;
+        letter-spacing: 0.2px;
+    }
+    
+    /* Feed header styling */
+    .feed-title {
+        font-size: 1.1rem;
+        font-weight: 800;
+        color: #ffffff;
+        margin-bottom: 3px;
+        text-transform: uppercase;
+        font-family: 'Courier New', monospace;
+        letter-spacing: 0.5px;
+    }
+    
+    .feed-refresh-text {
+        font-size: 0.8rem;
+        color: #cccccc;
+        font-family: 'Courier New', monospace;
+        font-weight: 500;
+    }
+    
+    /* Make tabs consistent with the greener look */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 0;
+        background-color: #1a1a1a;
+        border-bottom: 1px solid #333333;
+        padding: 0;
+    }
+    
+    /* Tabs styling */
+    .stTabs [data-baseweb="tab"], 
+    .stTabs [data-baseweb="tab-highlight"], 
+    .stTabs [data-baseweb="tab-border"] {
+        height: 32px;
+        white-space: pre-wrap;
+        background-color: #1a1a1a;
+        border-radius: 4px 4px 0 0;
+        gap: 0;
+        padding: 4px 12px;
+        color: #cccccc !important;
+        font-family: 'Courier New', monospace;
+        font-size: 0.85rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        border-color: #00ff00 !important;
+        letter-spacing: 0.5px;
+    }
+    
+    .stTabs [aria-selected="true"] {
+        background-color: #333333;
+        color: #ffffff !important;
+        font-weight: 800;
+        border-top: 2px solid #00ff00;
+        border-left: 1px solid #333333;
+        border-right: 1px solid #333333;
+        border-bottom: none;
+    }
+    
+    /* Checkboxes and radio buttons */
+    .stCheckbox > label, .stRadio > label {
+        color: #ffffff !important;
+        font-family: 'Courier New', monospace;
+        font-size: 0.9rem;
+        font-weight: 500;
+        letter-spacing: 0.2px;
+    }
+    
+    /* Expanders */
+    .stExpander > details > summary {
+        color: #ffffff !important;
+        font-family: 'Courier New', monospace;
+        font-size: 0.95rem;
+        font-weight: 600;
+    }
+    
+    /* Select boxes */
+    .stSelectbox > label {
+        color: #ffffff !important;
+        font-family: 'Courier New', monospace;
+        font-size: 0.9rem;
+        font-weight: 600;
+    }
+    
+    /* Captions */
+    .stCaption {
+        color: #cccccc !important;
+        font-family: 'Courier New', monospace;
+        font-size: 0.8rem;
+        font-weight: 500;
+    }
+    
+    /* Alert messages */
+    .stAlert > div {
+        color: #ffffff !important;
+        background-color: #1a1a1a;
+        border-radius: 4px;
+        border-left: 2px solid #00ff00;
+        font-family: 'Courier New', monospace;
+        font-size: 0.95rem;
+        font-weight: 500;
+    }
+
+    /* Status bar (session info) styling */
+    .status-bar {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background-color: #1a1a1a;
+        border-top: 1px solid #333333;
+        display: flex;
+        justify-content: space-between;
+        padding: 4px 10px;
+        color: #cccccc;
+        font-size: 0.8rem;
+        font-weight: 600;
+        z-index: 1000;
+        font-family: 'Courier New', monospace;
+        letter-spacing: 0.3px;
+    }
+    
+    .status-item {
+        margin-right: 10px;
+    }
+    
+    /* Scrollbars */
+    ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+    }
+    
+    ::-webkit-scrollbar-track {
+        background: #1a1a1a;
+    }
+    
+    ::-webkit-scrollbar-thumb {
+        background: #333333;
+        border-radius: 3px;
+    }
+    
+    ::-webkit-scrollbar-thumb:hover {
+        background: #555555;
+    }
+
+    /* News feed styling - Terminal style */
+    .terminal-header {
+        background-color: #1a1a1a;
+        color: #ffffff;
+        font-family: 'Courier New', monospace;
+        font-size: 1.2rem;
+        font-weight: 800;
+        text-align: center;
+        padding: 6px 0;
+        margin-bottom: 4px;
+        border-bottom: 1px solid #333333;
+        text-transform: uppercase;
+        letter-spacing: 1.2px;
+        border-radius: 4px 4px 0 0;
+    }
+    
+    .feed-controls {
+        font-family: 'Courier New', monospace;
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: #ffffff;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+    }
+    
+    .feed-timestamp {
+        font-family: 'Courier New', monospace;
+        font-size: 0.85rem;
+        font-weight: 500;
+        color: #cccccc;
+        text-align: right;
+    }
+    
+    /* News header row */
+    .news-header-row {
+        display: grid;
+        grid-template-columns: 6fr 1fr 1fr 1fr;
+        gap: 5px;
+        background-color: #1a1a1a;
+        padding: 6px 10px;
+        margin-bottom: 3px;
+        border-bottom: 1px solid #333333;
+        font-family: 'Courier New', monospace;
+        color: #ffffff;
+        border-radius: 4px 4px 0 0;
+    }
+    
+    .news-header-headline, .news-header-date, .news-header-time, .news-header-source {
+        font-size: 0.85rem;
+        font-weight: 800;
+        text-transform: uppercase;
+        color: #ffffff;
+        letter-spacing: 0.5px;
+    }
+    
+    /* News rows */
+    .news-row {
+        display: grid;
+        grid-template-columns: 6fr 1fr 1fr 1fr;
+        gap: 5px;
+        background-color: #1a1a1a;
+        padding: 6px 10px;
+        margin-bottom: 2px;
+        font-family: 'Courier New', monospace;
+        text-decoration: none;
+        color: #ffffff;
+        border-left: 2px solid transparent;
+        transition: background-color 0.2s, border-left-color 0.2s;
+        border-radius: 4px;
+    }
+    
+    .news-row:hover {
+        background-color: #2a2a2a;
+        border-left-color: #00ff00;
+    }
+    
+    /* Remove underlines and ensure all text is white */
+    a, a:hover, a:visited, a:active {
+        text-decoration: none !important;
+        color: #ffffff !important;
+    }
+    
+    a:hover {
+        color: #00ff00 !important;
+    }
+    
+    .news-row-headline, .news-row-date, .news-row-time, .news-row-source {
+        padding: 0 4px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        color: #ffffff;
+        font-size: 0.9rem;
+        font-weight: 500;
+        letter-spacing: 0.2px;
+    }
+    
+    .news-row-headline {
+        white-space: normal;
+        line-height: 1.4;
+    }
+    
+    /* Ensure all hover states use green */
+    button:hover, 
+    .stButton>button:hover,
+    .stExpander:hover,
+    .stRadio>div:hover {
+        border-color: #00ff00 !important;
+        color: #00ff00 !important;
+    }
+    
+    /* Streamlit specific element corrections to ensure consistency */
+    .streamlit-expanderHeader:hover,
+    .streamlit-expanderContent:hover {
+        border-color: #00ff00 !important;
+    }
+    
+    /* Fix the conversation history container indentation issue */
+    .conversation_container {
+        width: 100%;
+    }
+    
+    /* Special color for positive percent changes */
+    .pos-change {
+        color: #00ff00 !important;
+        font-weight: 600;
+    }
+    
+    /* Special color for negative percent changes */
+    .neg-change {
+        color: #00aa00 !important;
+        font-weight: 600;
+    }
+    
+    .news-row-date, .news-row-time {
+        color: #cccccc;
+        text-align: right;
+        font-size: 0.85rem;
+        font-weight: 500;
+    }
+    
+    .news-row-source {
+        color: #00ff00;
+        text-transform: uppercase;
+        font-size: 0.8rem;
+        font-weight: 700;
+        text-align: right;
+        letter-spacing: 0.3px;
+    }
+    
+    /* Additional terminal styling */
+    .terminal-cmd-info {
+        font-family: 'Courier New', monospace;
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: #cccccc;
+        margin-bottom: 8px;
+        padding: 3px 0;
+        border-bottom: 1px solid #333333;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+    }
+    
+    /* Command list styling */
+    .command-list {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px;
+        margin-bottom: 15px;
+    }
+    
+    .command-item {
+        font-family: 'Courier New', monospace;
+        font-size: 0.95rem;
+        font-weight: 500;
+        color: #ffffff;
+        display: flex;
+        align-items: center;
+        padding: 3px 0;
+        letter-spacing: 0.2px;
+    }
+    
+    .command-code {
+        background-color: #333333;
+        padding: 3px 8px;
+        margin-right: 8px;
+        min-width: 30px;
+        text-align: center;
+        font-weight: 800;
+        color: #00ff00;
+        border-radius: 3px;
+    }
+    
+    .command-input-label {
+        font-family: 'Courier New', monospace;
+        font-size: 0.9rem;
+        font-weight: 700;
+        color: #ffffff;
+        margin-bottom: 5px;
+        letter-spacing: 0.3px;
+    }
+    
+    .enter-button {
+        background-color: #333333;
+        color: #ffffff;
+        font-family: 'Courier New', monospace;
+        font-size: 0.8rem;
+        font-weight: 600;
+        padding: 6px 8px;
+        text-align: center;
+        height: 36px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-top: 24px;
+        border-radius: 4px;
+        letter-spacing: 0.3px;
+    }
+    
+    .filter-label {
+        text-align: right;
+        font-family: 'Courier New', monospace;
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: #ffffff;
+        padding: 3px 0;
+        letter-spacing: 0.2px;
+    }
+    
+    /* Refresh indicator */
+    @keyframes blink {
+        0% { opacity: 0; }
+        50% { opacity: 1; }
+        100% { opacity: 0; }
+    }
+    
+    .refresh-indicator {
+        display: inline-block;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background-color: #00ff00;
+        margin-left: 5px;
+        animation: blink 0.5s ease-in-out;
+        animation-iteration-count: 2;
+    }
+    
+    .refresh-indicator-container {
+        display: inline-flex;
+        align-items: center;
+        margin-left: 5px;
+    }
+    
+    /* Message prefix */
+    .message-prefix {
+        color: #00ff00;
+        font-weight: 800;
+        margin-right: 8px;
+        letter-spacing: 0.5px;
+    }
+    
+    .terminal-welcome {
+        background-color: #1a1a1a;
+        padding: 12px;
+        font-family: 'Courier New', monospace;
+        color: #ffffff;
+        border-left: 2px solid #00ff00;
+        margin-bottom: 10px;
+        line-height: 1.5;
+        font-size: 0.95rem;
+        font-weight: 500;
+        border-radius: 4px;
+        letter-spacing: 0.2px;
+    }
+    
+    .logo-container {
+        text-align: center;
+        margin-bottom: 15px;
+        padding-bottom: 12px;
+        border-bottom: 1px solid #333333;
+    }
+    
+    .sidebar-section-header {
+        font-family: 'Courier New', monospace;
+        font-size: 0.9rem;
+        font-weight: 800;
+        color: #ffffff;
+        text-transform: uppercase;
+        margin: 15px 0 8px 0;
+        padding-bottom: 4px;
+        border-bottom: 1px solid #333333;
+        letter-spacing: 0.5px;
+    }
+    
+    .sidebar-info {
+        font-family: 'Courier New', monospace;
+        font-size: 0.85rem;
+        font-weight: 500;
+        color: #ffffff;
+        line-height: 1.4;
+        letter-spacing: 0.2px;
+    }
+    
+    .sidebar-info ul {
+        padding-left: 15px;
+    }
+    
+    .sidebar-info li {
+        margin-bottom: 6px;
+    }
+    
+    /* Streamlit default components tweaking */
+    div.stButton > button:first-child {
+        font-family: 'Courier New', monospace;
+        text-transform: uppercase;
+        font-size: 0.85rem;
+        font-weight: 600;
+        letter-spacing: 0.3px;
+    }
+
+    /* Hide Streamlit branding */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+    
+    /* Table-like styling for quote data */
+    .quote-table {
+        width: 100%;
+        border-collapse: collapse;
+        border: 1px solid #333333;
+        font-family: 'Courier New', monospace;
+        margin-bottom: 10px;
+        border-radius: 4px;
+        overflow: hidden;
+    }
+    
+    .quote-table th {
+        background-color: #1a1a1a;
+        color: #ffffff;
+        font-size: 0.85rem;
+        font-weight: 700;
+        padding: 6px 8px;
+        text-align: left;
+        border-bottom: 1px solid #333333;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+    }
+    
+    .quote-table td {
+        padding: 5px 8px;
+        border-bottom: 1px solid #333333;
+        font-size: 0.9rem;
+        font-weight: 500;
+        color: #ffffff;
+    }
+    
+    .quote-row:hover {
+        background-color: #2a2a2a;
+    }
+    
+    .quote-ticker {
+        color: #ffffff;
+        font-weight: 700;
+    }
+    
+    .quote-value {
+        text-align: right;
+        font-weight: 600;
+    }
+    
+    .quote-volume {
+        text-align: right;
+        color: #cccccc;
+    }
+    
+    .quote-input {
+        background-color: #121212;
+        border: 1px solid #333333;
+        color: #ffffff;
+        padding: 6px 8px;
+        width: 100%;
+        font-family: 'Courier New', monospace;
+        font-size: 0.9rem;
+        font-weight: 500;
+        border-radius: 4px;
+    }
+    
+    /* Filter dropdown menu similar to images */
+    .filter-dropdown {
+        background-color: #1a1a1a;
+        color: #ffffff;
+        border: 1px solid #333333;
+        padding: 6px;
+        font-family: 'Courier New', monospace;
+        font-size: 0.85rem;
+        font-weight: 500;
+        border-radius: 4px;
+    }
+
+    /* Ticker suggestions dropdown */
+    .ticker-suggestions {
+        background-color: #1a1a1a;
+        border: 1px solid #333333;
+        max-height: 300px;
+        overflow-y: auto;
+        margin-top: 4px;
+        z-index: 1000;
+        border-radius: 4px;
+    }
+    
+    .ticker-suggestion-item {
+        display: flex;
+        justify-content: space-between;
+        padding: 6px 10px;
+        cursor: pointer;
+        border-bottom: 1px solid #222222;
+    }
+    
+    .ticker-suggestion-item:hover {
+        background-color: #2a2a2a;
+    }
+    
+    .ticker-symbol {
+        font-weight: 700;
+        color: #ffffff;
+        font-family: 'Courier New', monospace;
+        font-size: 0.9rem;
+        letter-spacing: 0.2px;
+    }
+    
+    .ticker-name {
+        color: #cccccc;
+        font-family: 'Courier New', monospace;
+        font-size: 0.9rem;
+        font-weight: 500;
+        text-overflow: ellipsis;
+        overflow: hidden;
+        letter-spacing: 0.2px;
     }
 </style>
 """, unsafe_allow_html=True)
+
+# Check for the presence of the OpenAI API key
+# Read API key directly from .env file to ensure we get the current value
+try:
+    with open('.env', 'r') as f:
+        env_contents = f.read()
+        for line in env_contents.splitlines():
+            if line.startswith('OPENAI_API_KEY='):
+                OPENAI_API_KEY = line.split('=', 1)[1]
+                st.sidebar.success(f"✅ OpenAI API key loaded: {OPENAI_API_KEY[:4]}...{OPENAI_API_KEY[-4:]}")
+                break
+        else:
+            OPENAI_API_KEY = None
+            st.error("❌ ERROR: OPENAI_API_KEY not found in .env file")
+except Exception as e:
+    st.error(f"❌ ERROR reading .env file: {str(e)}")
+    OPENAI_API_KEY = None
+
+# Fallback to environment variable if direct read failed
+if not OPENAI_API_KEY:
+    OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
+    if OPENAI_API_KEY:
+        st.sidebar.success(f"✅ OpenAI API key loaded from environment")
+    else:
+        st.error("❌ ERROR: OpenAI API key not found in environment")
+        st.info("Please add your OpenAI API key to the .env file with the variable name OPENAI_API_KEY")
+        st.stop()
 
 # Sample queries to help users get started
 SAMPLE_QUERIES = [
@@ -145,12 +921,133 @@ SAMPLE_QUERIES = [
 
 # Sample follow-up queries to give users ideas
 FOLLOW_UP_PROMPTS = [
-    "Can you recommend a trade based on this analysis?",
-    "What specific asset would you invest in based on this?",
-    "What trading strategy would work best in this scenario?",
-    "How would this affect other cryptocurrencies?",
-    "What would be a good hedging strategy here?"
+    "How does this compare to similar events?",
+    "What was the inflation rate at that time?",
+    "Why did the market react this way?",
+    "How long did it take to recover?",
+    "What are the implications for future events?"
 ]
+
+# Function to fetch RSS headlines and store them in session state
+def fetch_news_feed():
+    try:
+        with st.spinner("Fetching latest financial news..."):
+            headlines = fetch_rss_headlines()
+            
+            # Process each headline to ensure URL and date are properly set
+            for headline in headlines:
+                # Make sure URL is set correctly - if not in "url", use "link" instead
+                if "link" in headline and ("url" not in headline or not headline["url"]):
+                    headline["url"] = headline["link"]
+                
+                # Ensure there's a valid published date, default to current time if missing
+                if "published" not in headline or not headline["published"]:
+                    headline["published"] = datetime.now(pytz.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+            
+            # Sort by published date (newest first)
+            headlines = sorted(headlines, key=lambda x: x.get("published", datetime.now()), reverse=True)
+            
+            # Check if we have new content
+            has_new_content = False
+            if st.session_state.news_headlines:
+                # Compare newest headline
+                if headlines and (
+                    headlines[0].get("title") != st.session_state.news_headlines[0].get("title") or
+                    headlines[0].get("published") != st.session_state.news_headlines[0].get("published")
+                ):
+                    has_new_content = True
+            else:
+                # First load
+                has_new_content = True
+            
+            # Update latest headline tracking
+            if headlines:
+                newest = headlines[0]
+                st.session_state.latest_headline_id = f"{newest.get('title', '')}_{newest.get('published', '')}"
+            
+            # Set refresh indicator if we have new content
+            if has_new_content:
+                st.session_state.refresh_triggered = True
+            
+            # Update the session state - store all headlines instead of limiting to 30
+            if st.session_state.news_headlines:
+                # Add new headlines to existing ones, avoiding duplicates
+                existing_titles = {h.get("title", ""): True for h in st.session_state.news_headlines}
+                for headline in headlines:
+                    title = headline.get("title", "")
+                    if title not in existing_titles:
+                        st.session_state.news_headlines.append(headline)
+                        existing_titles[title] = True
+                
+                # Sort headlines again to ensure newest first
+                st.session_state.news_headlines = sorted(
+                    st.session_state.news_headlines, 
+                    key=lambda x: x.get("published", datetime.now()), 
+                    reverse=True
+                )
+            else:
+                st.session_state.news_headlines = headlines
+                
+            st.session_state.last_news_fetch_time = datetime.now()
+            
+            return headlines
+    except Exception as e:
+        st.error(f"Error fetching news: {str(e)}")
+        return []
+
+# Function to format the headline date
+def format_headline_date(published_date):
+    """Format the published date of a headline into both human-readable and exact formats."""
+    try:
+        # If published_date is a string, parse it to a datetime object
+        if isinstance(published_date, str):
+            published_date = parser.parse(published_date)
+        
+        # Ensure datetime has timezone info
+        if published_date.tzinfo is None:
+            published_date = pytz.UTC.localize(published_date)
+            
+        # Convert to Eastern Time
+        eastern = pytz.timezone('US/Eastern')
+        published_date = published_date.astimezone(eastern)
+            
+        # Get current time with timezone (Eastern)
+        now = datetime.now(eastern)
+        
+        # Calculate time difference
+        diff = now - published_date
+        
+        # Format based on time difference for relative time
+        if diff.days == 0:
+            hours = diff.seconds // 3600
+            if hours == 0:
+                minutes = diff.seconds // 60
+                relative_time = f"{minutes} minute{'s' if minutes != 1 else ''} ago"
+            else:
+                relative_time = f"{hours} hour{'s' if hours != 1 else ''} ago"
+        elif diff.days == 1:
+            relative_time = "Yesterday"
+        elif diff.days < 7:
+            relative_time = f"{diff.days} days ago"
+        else:
+            relative_time = published_date.strftime("%B %d, %Y")
+        
+        # Format for exact timestamp (using AM/PM format)
+        exact_time = published_date.strftime("%B %d, %Y at %I:%M %p ET")
+            
+        return {
+            "relative": relative_time,
+            "exact": exact_time,
+            "raw": published_date
+        }
+    except Exception as e:
+        # Return a fallback date string if parsing fails
+        print(f"Error formatting date: {str(e)}")
+        return {
+            "relative": "Recently published",
+            "exact": "Date unknown",
+            "raw": None
+        }
 
 # Function to initialize session state
 def initialize_session_state():
@@ -169,31 +1066,38 @@ def initialize_session_state():
         st.session_state.has_received_response = False
         st.session_state.last_query_time = None
         st.session_state.current_query = ""
-        st.session_state.cached_data = {}  # Store retrieved data for reuse
-        st.session_state.analysis_context = {
-            "tickers": [],
-            "dates": [],
-            "macro_data": {},
-            "market_data": {},
-            "events": []
-        }  # Track analyzed items
         
-    # News feed session state
-    if "news_feed" not in st.session_state:
-        st.session_state.news_feed = []
-        st.session_state.last_news_fetch = None
-        st.session_state.important_headlines = []
-        st.session_state.interpreted_headlines = []
-        st.session_state.auto_refresh = True
-        st.session_state.news_lock = threading.Lock()
+    # Initialize news feed if not already present
+    if "news_headlines" not in st.session_state:
+        st.session_state.news_headlines = []
+        st.session_state.last_news_fetch_time = None
+        # Get initial headlines
+        fetch_news_feed()
     
-    # Trade alerts session state
-    if "trade_alerts" not in st.session_state:
-        st.session_state.trade_alerts = []
-        st.session_state.last_alert_check = None
+    # Flag for real-time auto refresh
+    if "live_refresh" not in st.session_state:
+        st.session_state.live_refresh = True  # Enable by default
         
-    # Load saved data if it exists
-    load_data()
+    if "refresh_triggered" not in st.session_state:
+        st.session_state.refresh_triggered = False
+    
+    # For keeping track of the latest headline
+    if "latest_headline_id" not in st.session_state:
+        if st.session_state.news_headlines:
+            # Use title and date as a unique ID
+            latest = st.session_state.news_headlines[0]
+            st.session_state.latest_headline_id = f"{latest.get('title', '')}_{latest.get('published', '')}"
+        else:
+            st.session_state.latest_headline_id = ""
+            
+    # Track active tab
+    if "active_tab" not in st.session_state:
+        st.session_state.active_tab = 0  # Default to first tab (Command)
+        
+    # Welcome screen display control
+    if "welcome_shown" not in st.session_state:
+        st.session_state.welcome_shown = False
+        st.session_state.welcome_time = time.time()
 
 # Function to reset conversation
 def reset_conversation():
@@ -207,62 +1111,42 @@ def reset_conversation():
         st.session_state.has_received_response = False
         st.session_state.last_query_time = None
         st.session_state.current_query = ""
-        st.session_state.cached_data = {}
-        st.session_state.analysis_context = {
-            "tickers": [],
-            "dates": [],
-            "macro_data": {},
-            "market_data": {},
-            "events": []
-        }
         st.success("Conversation reset. New session started.")
     except Exception as e:
         st.error(f"Error resetting conversation: {str(e)}")
 
-# Function to extract and store context from response
-def extract_context_from_response(response):
-    # Skip if response isn't a dictionary or doesn't have the expected fields
-    if not isinstance(response, dict):
-        return
-    
-    # Extract and store tickers
-    if "ticker" in response:
-        ticker = response.get("ticker")
-        if ticker and ticker not in st.session_state.analysis_context["tickers"]:
-            st.session_state.analysis_context["tickers"].append(ticker)
-    
-    # Extract and store dates
-    if "event_date" in response:
-        date = response.get("event_date")
-        if date and date not in st.session_state.analysis_context["dates"]:
-            st.session_state.analysis_context["dates"].append(date)
-    
-    # Store macro data if available
-    if "macro_data" in response and isinstance(response["macro_data"], dict):
-        st.session_state.analysis_context["macro_data"].update(response["macro_data"])
-    
-    # Store market data if available
-    if "price_change_pct" in response or "volatility_pct" in response:
-        ticker = response.get("ticker", "unknown")
-        market_data = {
-            "price_change": response.get("price_change_pct"),
-            "volatility": response.get("volatility_pct"),
-            "max_drawdown": response.get("max_drawdown_pct")
-        }
-        st.session_state.analysis_context["market_data"][ticker] = market_data
-    
-    # Store event information
-    if "event_date" in response and "ticker" in response:
-        event = {
-            "date": response.get("event_date"),
-            "ticker": response.get("ticker"),
-            "description": response.get("event_description", "")
-        }
-        st.session_state.analysis_context["events"].append(event)
-    
-    # Cache the whole response for potential reuse
-    response_id = f"response_{st.session_state.query_count}"
-    st.session_state.cached_data[response_id] = response
+# Function to check for new RSS feed items
+def check_for_new_headlines():
+    """Check if there are any new headlines available without updating the session state."""
+    try:
+        # Quick fetch to check for new items
+        headlines = fetch_rss_headlines()
+        
+        # Process to make comparable
+        for headline in headlines:
+            if "link" in headline and ("url" not in headline or not headline["url"]):
+                headline["url"] = headline["link"]
+            
+            if "published" not in headline or not headline["published"]:
+                headline["published"] = datetime.now(pytz.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+        
+        # Sort by published date (newest first)
+        headlines = sorted(headlines, key=lambda x: x.get("published", datetime.now()), reverse=True)
+        
+        # If we have headlines to compare
+        if headlines and st.session_state.news_headlines:
+            # Get the newest headline from current fetch
+            newest = headlines[0]
+            newest_id = f"{newest.get('title', '')}_{newest.get('published', '')}"
+            
+            # Compare with our stored latest headline ID
+            if newest_id != st.session_state.latest_headline_id:
+                return True  # New headlines available
+        
+        return False  # No new headlines
+    except Exception as e:
+        print(f"Error checking for new headlines: {str(e)}")
+        return False
 
 # Function to process user query
 def process_user_query(user_query):
@@ -270,14 +1154,12 @@ def process_user_query(user_query):
     st.session_state.conversation.append({"role": "user", "content": user_query})
     
     try:
-        is_follow_up = st.session_state.has_received_response
-        
         # Process the query
         response, new_session_id = process_query(
             user_query, 
             st.session_state.session_id,
             # If we've already had a conversation, treat this as a follow-up
-            is_follow_up=is_follow_up
+            is_follow_up=st.session_state.has_received_response
         )
         
         # Update session ID if changed
@@ -288,11 +1170,6 @@ def process_user_query(user_query):
         if isinstance(response, dict) and "response" in response:
             response_text = response["response"]
             sections = response.get("sections", [])
-            
-            # Extract and store context if this is not a follow-up or has new data
-            if not is_follow_up or "success" in response and response.get("success"):
-                extract_context_from_response(response)
-                
         elif isinstance(response, tuple) and len(response) > 0:
             response_text = response[0]
             sections = []
@@ -300,661 +1177,505 @@ def process_user_query(user_query):
             response_text = str(response)
             sections = []
         
-        # For follow-up queries, augment response with context about data reuse
-        if is_follow_up and st.session_state.cached_data:
-            # Only add this context note for certain types of follow-ups
-            if any(keyword in user_query.lower() for keyword in ["trade", "invest", "buy", "sell", "strategy", "recommendation"]):
-                context_items = []
-                
-                if st.session_state.analysis_context["tickers"]:
-                    tickers_str = ", ".join(st.session_state.analysis_context["tickers"])
-                    context_items.append(f"using market data for {tickers_str}")
-                
-                if st.session_state.analysis_context["dates"]:
-                    recent_date = st.session_state.analysis_context["dates"][-1]
-                    context_items.append(f"based on the event date {recent_date}")
-                
-                if context_items:
-                    context_note = " and ".join(context_items)
-                    response_text = f"{response_text}\n\n_Note: This recommendation is {context_note} from our previous analysis._"
-        
         # Add main response to conversation
         st.session_state.conversation.append({"role": "assistant", "content": response_text})
         
         # Add any sections as additional assistant messages if they exist
         for section in sections:
-            if section and isinstance(section, dict) and "title" in section and "content" in section:
-                section_text = f"**{section['title']}**\n\n{section['content']}"
-                st.session_state.conversation.append({"role": "assistant", "content": section_text})
+            if section.get("title") and section.get("content"):
+                section_content = f"**{section['title']}**\n\n{section['content']}"
+                st.session_state.conversation.append({"role": "assistant", "content": section_content})
         
-        # Update session state
-        st.session_state.has_received_response = True
         st.session_state.query_count += 1
+        st.session_state.error = None
+        st.session_state.has_received_response = True
         st.session_state.last_query_time = datetime.now()
         st.session_state.current_query = ""  # Clear the current query
+        return response
         
     except Exception as e:
         error_msg = f"Error processing query: {str(e)}"
-        if not isinstance(e, (ValueError, TypeError)):
-            error_msg += "\n\n" + traceback.format_exc()
-        
         st.session_state.error = error_msg
-        st.session_state.conversation.append({"role": "assistant", "content": f"Error: {str(e)}"})
+        st.session_state.conversation.append({"role": "assistant", "content": f"❌ {error_msg}\n\nPlease try again or reset the conversation."})
+        traceback.print_exc()
+        st.session_state.current_query = ""  # Clear the current query
+        return None
 
+# Function to use sample query
 def use_sample_query(query):
     # Set the query in session state to be processed
     st.session_state.current_query = query
-
+    
+# Function to suggest a random follow-up prompt
 def get_follow_up_suggestion():
-    # If we have analyzed tickers, suggest trade-related follow-ups more often
-    if st.session_state.analysis_context["tickers"]:
-        # Bias towards trade recommendations for tickers we've analyzed
-        trade_prompts = [p for p in FOLLOW_UP_PROMPTS if any(keyword in p.lower() for keyword in ["trade", "invest", "strategy"])]
-        if trade_prompts:
-            return trade_prompts[hash(datetime.now().minute) % len(trade_prompts)]
+    import random
+    return random.choice(FOLLOW_UP_PROMPTS)
     
-    # Otherwise return a generic follow-up prompt
-    return FOLLOW_UP_PROMPTS[hash(datetime.now().minute) % len(FOLLOW_UP_PROMPTS)]
+# Function to toggle live refresh
+def toggle_live_refresh():
+    st.session_state.live_refresh = not st.session_state.live_refresh
+    
+    # Make sure we keep the active tab as news (index 1) when toggling from the news feed
+    # Only modify if we're already on the news tab
+    if st.session_state.active_tab == 1:
+        st.query_params.tab = 1
 
-def show_context_information():
-    """Show analysis context information in the sidebar."""
-    
-    # Show tickers
-    if st.session_state.analysis_context["tickers"]:
-        st.sidebar.markdown(f"**Tickers:** {', '.join(st.session_state.analysis_context['tickers'])}")
-    
-    # Show dates
-    if st.session_state.analysis_context["dates"]:
-        st.sidebar.markdown(f"**Event dates:** {', '.join(st.session_state.analysis_context['dates'])}")
-    
-    # Show macro data snapshot if available
-    if st.session_state.analysis_context["macro_data"]:
-        with st.sidebar.expander("Macro Data"):
-            for key, value in st.session_state.analysis_context["macro_data"].items():
-                if not key.startswith("_") and isinstance(value, (int, float)):
-                    st.markdown(f"**{key}:** {value}")
+# Function to set active tab index
+def set_active_tab(tab_index):
+    st.session_state.active_tab = tab_index
 
-def display_search_interface():
-    """Display the search tab interface (original functionality)"""
-    st.header("🔍 Market Event Analysis")
+# Function to display chat interface
+def display_chat_interface():
+    """Display the chat interface with Bloomberg terminal styling."""
+    # Terminal header
+    st.markdown('<div class="terminal-header">COMMAND TERMINAL</div>', unsafe_allow_html=True)
+    
+    # Add command input 
+    st.markdown("<div class='command-input-label'>Enter market query:</div>", unsafe_allow_html=True)
     
     # Display error if exists
     if st.session_state.get("error"):
         st.error(st.session_state.error)
     
-    # Display conversation history with improved styling
-    for message in st.session_state.conversation:
-        if message["role"] == "user":
-            st.markdown(
-                f"<div class='user-message'>"
-                f"<b>You:</b> {message['content']}"
-                f"</div>",
-                unsafe_allow_html=True
-            )
-        else:
-            st.markdown(
-                f"<div class='assistant-message'>"
-                f"<b>Assistant:</b> {message['content']}"
-                f"</div>",
-                unsafe_allow_html=True
-            )
+    # Command input
+    col1, col2 = st.columns([9, 1])
+    with col1:
+        query = st.text_input("", value=st.session_state.current_query, key="command_input", 
+                             placeholder="Type a market query...")
+    with col2:
+        st.markdown("<div class='enter-button'>ENTER →</div>", unsafe_allow_html=True)
     
-    # Input area with context-aware prompt
-    if st.session_state.has_received_response:
-        st.markdown("<h3 style='color: white;'>Follow up question</h3>", unsafe_allow_html=True)
-        placeholder_text = get_follow_up_suggestion()
-        query_prompt = f"Ask a follow-up question about this analysis..."
-        
-        # Add a hint about context retention with improved visibility
-        if st.session_state.query_count > 0:
-            st.markdown(
-                f"<div class='context-hint'>"
-                f"💡 Try asking something like '{placeholder_text}' - I'll use the data I've already gathered"
-                f"</div>",
-                unsafe_allow_html=True
-            )
-    else:
-        st.markdown("<h3 style='color: white;'>Ask a question</h3>", unsafe_allow_html=True)
-        query_prompt = "Ask about a market event..."
+    # Display conversation history
+    conversation_container = st.container()
+    with conversation_container:
+        for message in st.session_state.conversation:
+            if message["role"] == "user":
+                st.markdown(
+                    f"<div class='user-message'>"
+                    f"<span class='message-prefix'>QUERY ></span> {message['content']}"
+                    f"</div>",
+                    unsafe_allow_html=True
+                )
+            else:
+                st.markdown(
+                    f"<div class='assistant-message'>"
+                    f"<span class='message-prefix'>OPT_BOT ></span> {message['content']}"
+                    f"</div>",
+                    unsafe_allow_html=True
+                )
     
-    # Query input - no value parameter
-    query = st.chat_input(query_prompt)
+    # First-time welcome message
+    if not st.session_state.conversation:
+        st.markdown(
+        """
+        <div class="terminal-welcome">
+<span class="message-prefix">SYSTEM ></span> OPTION BOT INITIALIZED
+
+WELCOME TO OPTION BOT TERMINAL v1.0
+
+ENTER A MARKET QUERY TO ANALYZE:
+- "What happened when Bitcoin ETF was approved?"
+- "How did the market react to the Fed raising rates?"
+- "What was the impact of Silicon Valley Bank collapse?"
+- "How did Tesla stock perform after Q1 earnings?"
+        </div>
+        """, 
+            unsafe_allow_html=True
+        )
     
     # Process query if entered by user or if a sample query was selected
     if query or st.session_state.current_query:
-        # If query came from chat input, use that; otherwise use the sample query
         user_query = query if query else st.session_state.current_query
-        if user_query:  # Make sure we have a query to process
-            with st.spinner("Analyzing market data..."):
+        if user_query:
+            with st.spinner("PROCESSING QUERY..."):
                 process_user_query(user_query)
+            # Keep current active tab index
+            st.query_params.tab = st.session_state.active_tab
             st.rerun()
     
-    # First-time welcome message with improved styling
-    if not st.session_state.conversation:
+    # Add a status bar at the bottom with Eastern Time
+    eastern = pytz.timezone('US/Eastern')
+    current_time = datetime.now(eastern).strftime("%I:%M:%S %p ET")
+    st.markdown(
+        f"""
+        <div class="status-bar">
+            <div class="status-item">SESSION: {st.session_state.session_id[:8]}...</div>
+            <div class="status-item">QUERIES: {st.session_state.query_count}</div>
+            <div class="status-item">TIME: {current_time}</div>
+            <div class="status-item">OPTIONS BOT v1.0</div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+# Function to display the news feed tab
+def display_news_feed():
+    """Display the news feed tab with the latest financial news headlines in Bloomberg terminal style."""
+    # Check for new headlines if live refresh is enabled
+    if st.session_state.live_refresh and check_for_new_headlines():
+        fetch_news_feed()
+        # Ensure we keep the news tab active (index 1)
+        st.session_state.active_tab = 1
+        st.query_params.tab = 1
+        st.rerun()
+    
+    # NEWS FEED HEADER
+    st.markdown('<div class="terminal-header">NEWS TERMINAL</div>', unsafe_allow_html=True)
+    
+    # Top control bar
+    col1, col2, col3 = st.columns([5, 4, 1])
+    
+    with col1:
+        search_query = st.text_input("🔍 Search headlines", placeholder="Enter search term", key="news_search")
+    
+    with col2:
+        last_fetch_time = st.session_state.last_news_fetch_time
+        if last_fetch_time:
+            # Convert to Eastern Time
+            eastern = pytz.timezone('US/Eastern')
+            last_fetch_time = last_fetch_time.astimezone(eastern)
+            st.markdown(
+                f'<div class="feed-timestamp">Last updated: {last_fetch_time.strftime("%I:%M:%S %p ET")}</div>',
+                unsafe_allow_html=True
+            )
+    
+    with col3:
+        if st.button("🔄"):
+            # Force refresh now and explicitly set the flag
+            fetch_news_feed()
+            # Keep news tab active
+            st.session_state.active_tab = 1
+            st.query_params.tab = 1
+            st.rerun()
+    
+    # Refresh settings and indicator
+    col1, col2 = st.columns([1, 2])
+    
+    with col1:
+        # Live refresh toggle with indicator
+        live_refresh_col1, live_refresh_col2 = st.columns([3, 1])
+        with live_refresh_col1:
+            # Create a key for the previous live refresh state
+            if "previous_live_refresh" not in st.session_state:
+                st.session_state.previous_live_refresh = st.session_state.live_refresh
+            
+            # Custom callback to set active tab before toggle_live_refresh is called
+            def handle_live_refresh_change():
+                # Set active tab to news feed (1) to maintain tab after rerun
+                st.session_state.active_tab = 1
+                st.query_params.tab = 1
+                # Now toggle the actual live refresh state
+                st.session_state.live_refresh = not st.session_state.previous_live_refresh
+                # Update previous state for next toggle
+                st.session_state.previous_live_refresh = st.session_state.live_refresh
+            
+            # Use the checkbox with our custom callback
+            live_refresh = st.checkbox(
+                "Live updates", 
+                value=st.session_state.live_refresh,
+                key="live_refresh_toggle",
+                on_change=handle_live_refresh_change,
+                help="Automatically refresh when new headlines are available"
+            )
+        
+        with live_refresh_col2:
+            # Show blinking indicator if refresh was triggered
+            if st.session_state.refresh_triggered:
+                st.markdown('<div class="refresh-indicator-container"><div class="refresh-indicator"></div></div>', unsafe_allow_html=True)
+                # Reset the flag after displaying 
+                st.session_state.refresh_triggered = False
+            else:
+                st.empty()  # Empty placeholder when not refreshing
+    
+    with col2:
+        # Show info about live refresh
+        if st.session_state.live_refresh:
+            st.info("Auto-updating as new headlines appear ⚡")
+        else:
+            st.caption("Refresh manually or enable live updates")
+    
+    # Display column headers
         st.markdown(
             """
-            <div style="background-color: #1e293b; padding: 20px; border-radius: 10px; color: white;">
-            <h3 style="color: #93c5fd;">👋 Welcome to the Market Event Analysis tool!</h3>
-            <p>
-            Ask me about historical market events, and I'll provide analysis based on 
-            historical data and patterns. Try clicking one of the sample queries in the sidebar
-            to get started, or type your own question.
-            </p>
-            <p>
-            The conversation maintains context, so you can ask follow-up questions that build on 
-            previous responses without repeating information. For example, after asking about an event,
-            you can ask for specific trade recommendations based on that analysis.
-            </p>
+        <div class="news-header-row">
+            <div class="news-header-headline">Headline</div>
+            <div class="news-header-date">Date</div>
+            <div class="news-header-time">Time</div>
+            <div class="news-header-source">Source</div>
+        </div>
+        """, 
+        unsafe_allow_html=True
+    )
+    
+    # Filter and display news items
+    if not st.session_state.news_headlines:
+        st.info("No news headlines found. Click refresh to try again.")
+    else:
+        # Apply filters to headlines
+        filtered_headlines = st.session_state.news_headlines.copy()
+        
+        # Apply search filter
+        if search_query:
+            filtered_headlines = [
+                h for h in filtered_headlines 
+                if search_query.lower() in h.get("title", "").lower() or 
+                   search_query.lower() in h.get("summary", "").lower()
+            ]
+        
+        # Limit display count
+        display_count = 50  # Fixed display count since we removed the advanced options
+        display_headlines = filtered_headlines[:display_count]
+        
+        # Show number of headlines displayed vs total
+        st.caption(f"Displaying {len(display_headlines)} of {len(filtered_headlines)} headlines (Total: {len(st.session_state.news_headlines)})")
+        
+        # Display headlines
+        for headline in display_headlines:
+            title = headline.get("title", "No title")
+            source = headline.get("source", "Unknown source")
+            published = headline.get("published")
+            url = headline.get("link" if "link" in headline else "url", "#")
+            
+            # Format date/time in terminal style
+            try:
+                date_info = format_headline_date(published)
+                date_obj = date_info["raw"]
+                
+                if date_obj:
+                    date_str = date_obj.strftime("%m/%d/%y")
+                    time_str = date_obj.strftime("%I:%M %p")
+                else:
+                    date_str = "—"
+                    time_str = "—"
+            except Exception as e:
+                date_str = "—"
+                time_str = "—"
+                print(f"Error formatting date: {str(e)}")
+            
+            # Create news row
+            st.markdown(
+                f"""
+                <a href="{url}" target="_blank" class="news-row">
+                    <div class="news-row-headline">{title}</div>
+                    <div class="news-row-date">{date_str}</div>
+                    <div class="news-row-time">{time_str}</div>
+                    <div class="news-row-source">{source}</div>
+                </a>
+                """,
+                unsafe_allow_html=True
+            )
+    
+    # Add a status bar at the bottom
+    # Determine refresh status message
+    if st.session_state.live_refresh:
+        refresh_status = "LIVE UPDATES"
+    else:
+        refresh_status = "MANUAL REFRESH"
+        
+    # Convert to Eastern Time
+    eastern = pytz.timezone('US/Eastern')
+    current_time = datetime.now(eastern).strftime("%I:%M:%S %p ET")
+    
+    st.markdown(
+        f"""
+        <div class="status-bar">
+            <div class="status-item">NEWS</div>
+            <div class="status-item">{refresh_status}</div>
+            <div class="status-item">HEADLINES: {len(st.session_state.news_headlines)}</div>
+            <div class="status-item">TIME: {current_time}</div>
+            <div class="status-item">OPTIONS BOT v1.0</div>
             </div>
             """, 
             unsafe_allow_html=True
         )
-
-# Functions for NEWS FEED tab
-def format_time_ago(timestamp_str: str) -> str:
-    """Convert ISO timestamp to a human-readable 'X minutes ago' format."""
-    try:
-        timestamp = datetime.strptime(timestamp_str, "%Y-%m-%dT%H:%M:%SZ")
-        now = datetime.now()
-        
-        delta = now - timestamp
-        
-        if delta.days > 0:
-            return f"{delta.days}d ago"
-        elif delta.seconds >= 3600:
-            hours = delta.seconds // 3600
-            return f"{hours}h ago"
-        elif delta.seconds >= 60:
-            minutes = delta.seconds // 60
-            return f"{minutes}m ago"
-        else:
-            return "just now"
-    except Exception:
-        return "unknown time"
-
-def fetch_news():
-    """Fetch fresh news for the news feed tab"""
-    try:
-        headlines = fetch_rss_headlines()
-        if headlines:
-            # Sort by published date, newest first
-            headlines.sort(key=lambda x: x.get('published', ''), reverse=True)
-            st.session_state.news_feed = headlines
-            st.session_state.last_news_fetch = datetime.now()
-            
-            # Check for important headlines for alerts
-            check_important_headlines(headlines[:10])  # Check top 10 headlines
-    except Exception as e:
-        st.error(f"Error fetching news: {str(e)}")
-
-def check_important_headlines(headlines):
-    """Identify important headlines and add them to alerts if necessary"""
-    # Check for potential market-moving keywords
-    important_keywords = ['crash', 'rally', 'surge', 'plunge', 'collapse', 'soar', 
-                         'bankrupt', 'recession', 'fed', 'rate', 'inflation', 'war', 
-                         'attack', 'emergency', 'surprise', 'unexpected', 'breach',
-                         'hack', 'scandal', 'investigation', 'SEC', 'record high',
-                         'record low', 'breaks', 'beats', 'misses', 'earnings', 'IPO']
-    
-    try:
-        for headline in headlines:
-            # Skip already processed headlines
-            headline_id = f"{headline.get('title', '')}_{headline.get('source', '')}"
-            if any(h.get('id') == headline_id for h in st.session_state.important_headlines):
-                continue
-                
-            # Check if headline contains important keywords
-            title = headline.get('title', '').lower()
-            if any(keyword.lower() in title for keyword in important_keywords):
-                # Mark as important and add to queue for processing
-                headline['id'] = headline_id
-                headline['importance'] = 'high' if any(k in title for k in ['crash', 'collapse', 'emergency', 'attack', 'war']) else 'medium'
-                headline['processed'] = False
-                st.session_state.important_headlines.append(headline)
-                
-    except Exception as e:
-        st.error(f"Error checking important headlines: {str(e)}")
-
-def display_news_feed():
-    """Display the news feed tab content"""
-    st.header("📰 Financial News Feed")
-    
-    # Top controls row
-    col1, col2, col3 = st.columns([1, 1, 1])
-    with col1:
-        if st.button("🔄 Refresh News", use_container_width=True):
-            with st.spinner("Fetching latest headlines..."):
-                fetch_news()
-                save_data()  # Save updated data
-    with col2:
-        # Toggle for auto-refresh
-        auto_refresh = st.checkbox("Auto-refresh (every 5 min)", value=st.session_state.auto_refresh)
-        if auto_refresh != st.session_state.auto_refresh:
-            st.session_state.auto_refresh = auto_refresh
-    with col3:
-        # Filter for news sources
-        sources = ["All Sources"] + [feed["source"] for feed in FINANCIAL_FEEDS]
-        selected_source = st.selectbox("Filter by source:", sources)
-    
-    # Search input
-    search_term = st.text_input("🔍 Search headlines:", placeholder="Enter keywords to search...")
-    
-    # Display last fetched time
-    if st.session_state.last_news_fetch:
-        st.caption(f"Last updated: {st.session_state.last_news_fetch.strftime('%H:%M:%S')}")
-    
-    # Create scrollable container for news
-    news_container = st.container()
-    
-    with news_container:
-        if not st.session_state.news_feed:
-            st.info("No news headlines loaded. Click 'Refresh News' to fetch latest headlines.")
-        else:
-            # Filter by selected source if needed
-            filtered_news = st.session_state.news_feed
-            if selected_source != "All Sources":
-                filtered_news = [h for h in st.session_state.news_feed if h.get('source') == selected_source]
-            
-            # Apply search filter if provided
-            if search_term:
-                search_words = search_term.lower().split()
-                filtered_news = [
-                    h for h in filtered_news 
-                    if any(word in h.get('title', '').lower() for word in search_words)
-                ]
-                
-                # Show search result count
-                st.caption(f"Found {len(filtered_news)} headlines matching '{search_term}'")
-            
-            # Always sort by newest first
-            filtered_news.sort(key=lambda x: x.get('published', ''), reverse=True)
-            
-            # Display news count
-            st.write(f"Showing {len(filtered_news)} headlines")
-            
-            # Check if we have no results after filtering
-            if not filtered_news:
-                st.warning("No headlines match the current filters. Try adjusting your search terms or filters.")
-            
-            # Display news cards
-            for headline in filtered_news:
-                time_ago = format_time_ago(headline.get('published', ''))
-                
-                # Check if this headline is marked as important
-                is_important = any(
-                    h.get('id') == f"{headline.get('title', '')}_{headline.get('source', '')}" 
-                    for h in st.session_state.important_headlines
-                )
-                
-                importance_marker = "🔴" if is_important else ""
-                
-                # Create a news card with HTML styling
-                st.markdown(f"""
-                <div class="news-card {' alert-high' if is_important else ''}">
-                    <div class="news-source">{importance_marker} {headline.get('source', 'Unknown')} • <span class="news-time">{time_ago}</span></div>
-                    <div class="news-title">{headline.get('title', 'No Title')}</div>
-                    <a href="{headline.get('link', '#')}" target="_blank">Read more</a>
-                </div>
-                """, unsafe_allow_html=True)
-    
-    # Auto-refresh logic - make more robust by checking elapsed time
-    if st.session_state.auto_refresh:
-        # Calculate seconds since last refresh
-        last_refresh_seconds = 300  # Default to trigger refresh if no previous fetch
-        if st.session_state.last_news_fetch:
-            last_refresh_seconds = (datetime.now() - st.session_state.last_news_fetch).seconds
-        
-        # Refresh if 5 minutes (300 seconds) have passed
-        if last_refresh_seconds >= 300:
-            st.session_state.last_auto_refresh = datetime.now()
-            fetch_news()
-            time.sleep(0.1)  # Small delay to avoid aggressive refreshing
-            st.experimental_rerun()
-
-# Functions for TRADE ALERTS tab
-def process_important_headlines():
-    """Process important headlines to generate trade alerts"""
-    try:
-        # Find unprocessed important headlines
-        unprocessed = [h for h in st.session_state.important_headlines if not h.get('processed', False)]
-        
-        if not unprocessed:
-            return
-            
-        # Process up to 3 headlines at a time to avoid overloading
-        for headline in unprocessed[:3]:
-            # Mark as processed to avoid reprocessing
-            headline['processed'] = True
-            
-            # Use classify_macro_event to get market insights
-            try:
-                classification = classify_macro_event(headline)
-                
-                # Create a trade alert from the classification
-                if classification and 'sentiment' in classification:
-                    alert = {
-                        'headline': headline.get('title', 'Unknown headline'),
-                        'source': headline.get('source', 'Unknown source'),
-                        'time': headline.get('published', ''),
-                        'link': headline.get('link', '#'),
-                        'importance': headline.get('importance', 'medium'),
-                        'event_type': classification.get('event_type', 'Unknown'),
-                        'sentiment': classification.get('sentiment', 'Neutral'),
-                        'sector': classification.get('sector', 'General Market'),
-                        'timestamp': datetime.now().isoformat(),
-                        'id': headline.get('id')
-                    }
-                    
-                    # Add to trade alerts
-                    st.session_state.trade_alerts.append(alert)
-            except Exception as e:
-                st.error(f"Error classifying headline: {str(e)}")
-                continue
-    
-    except Exception as e:
-        st.error(f"Error processing important headlines: {str(e)}")
-
-def display_trade_alerts():
-    """Display the trade alerts tab content"""
-    st.header("🚨 Automated Trade Alerts")
-    
-    col1, col2, col3 = st.columns([1, 1, 1])
-    with col1:
-        if st.button("🔄 Refresh Alerts", use_container_width=True):
-            # Refresh alerts by processing any important headlines
-            with st.spinner("Scanning for trading opportunities..."):
-                process_important_headlines()
-                save_data()  # Save updated data
-    with col2:
-        # Allow filtering by importance
-        importance_filter = st.selectbox("Filter by importance:", ["All Alerts", "High", "Medium", "Low"])
-    with col3:
-        # Sentiment filter
-        sentiment_filter = st.selectbox("Filter by sentiment:", ["All", "Bullish", "Bearish", "Neutral"])
-    
-    # Metrics row for statistics
-    st.markdown("### Alert Statistics")
-    metrics_col1, metrics_col2, metrics_col3, metrics_col4 = st.columns(4)
-    
-    with metrics_col1:
-        total_alerts = len(st.session_state.trade_alerts)
-        st.metric("Total Alerts", total_alerts)
-    
-    with metrics_col2:
-        high_priority = len([a for a in st.session_state.trade_alerts if a.get('importance') == 'high'])
-        st.metric("High Priority", high_priority)
-    
-    with metrics_col3:
-        bullish_count = len([a for a in st.session_state.trade_alerts if a.get('sentiment') == 'Bullish'])
-        st.metric("Bullish Alerts", bullish_count)
-    
-    with metrics_col4:
-        bearish_count = len([a for a in st.session_state.trade_alerts if a.get('sentiment') == 'Bearish'])
-        st.metric("Bearish Alerts", bearish_count)
-    
-    # Display alerts in a scrollable container
-    alerts_container = st.container()
-    
-    with alerts_container:
-        if not st.session_state.trade_alerts:
-            st.info("No trade alerts generated yet. Market events that may present trading opportunities will appear here.")
-        else:
-            # Sort alerts by importance and timestamp (newest first)
-            sorted_alerts = sorted(
-                st.session_state.trade_alerts,
-                key=lambda a: (
-                    0 if a.get('importance') == 'high' else 1 if a.get('importance') == 'medium' else 2,
-                    a.get('timestamp', ''),
-                ),
-                reverse=True
-            )
-            
-            # Apply filters if needed
-            if importance_filter != "All Alerts":
-                sorted_alerts = [a for a in sorted_alerts if a.get('importance', '').lower() == importance_filter.lower()]
-            
-            if sentiment_filter != "All":
-                sorted_alerts = [a for a in sorted_alerts if a.get('sentiment', '') == sentiment_filter]
-            
-            # Display each alert
-            for alert in sorted_alerts:
-                importance = alert.get('importance', 'medium')
-                sentiment = alert.get('sentiment', 'Neutral')
-                sentiment_color = 'green' if sentiment == 'Bullish' else 'red' if sentiment == 'Bearish' else 'gray'
-                time_ago = format_time_ago(alert.get('time', ''))
-                
-                # Create alert box with appropriate styling
-                with st.container():
-                    st.markdown(f"""
-                    <div class="news-card alert-{importance}">
-                        <div class="news-source">
-                            <span style="color: {'red' if importance == 'high' else 'orange' if importance == 'medium' else 'green'}">
-                                {'🔴' if importance == 'high' else '🟠' if importance == 'medium' else '🟢'} 
-                                {importance.upper()} PRIORITY
-                            </span> • 
-                            <span class="news-time">{time_ago} • {alert.get('source', 'Unknown')}</span>
-                        </div>
-                        <div class="news-title">{alert.get('headline', 'No Title')}</div>
-                        <p><b>Analysis:</b> <span>{alert.get('event_type', 'Unknown')}</span> | 
-                           <span style="color: {sentiment_color}">{sentiment}</span> | 
-                           <span>{alert.get('sector', 'Unknown')}</span></p>
-                        <a href="{alert.get('link', '#')}" target="_blank">Read original story</a>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    
-                    # Add button to generate trade idea based on this alert
-                    col1, col2 = st.columns([1, 3])
-                    with col1:
-                        if st.button(f"Generate Trade Idea", key=f"trade_{alert.get('id', '')}"):
-                            # Set this headline as the search query
-                            st.session_state.current_query = alert.get('headline', '')
-                            # Switch to search tab
-                            st.session_state.active_tab = "Search"
-                            st.rerun()
-
-def start_background_processing():
-    """Set up background processing for headlines if not already running"""
-    if "background_processing" not in st.session_state:
-        st.session_state.background_processing = True
-        
-        # Start a background thread that processes headlines
-        def background_worker():
-            while True:
-                # Process any important headlines that haven't been processed yet
-                unprocessed = [h for h in st.session_state.important_headlines if not h.get('processed', False)]
-                if unprocessed:
-                    with st.session_state.news_lock:
-                        # Process one headline at a time to avoid API rate limits
-                        headline = unprocessed[0]
-                        headline['processed'] = True
-                        
-                        try:
-                            # Use classify_macro_event to get market insights
-                            classification = classify_macro_event(headline)
-                            
-                            # Create a trade alert from the classification
-                            if classification and 'sentiment' in classification:
-                                alert = {
-                                    'headline': headline.get('title', 'Unknown headline'),
-                                    'source': headline.get('source', 'Unknown source'),
-                                    'time': headline.get('published', ''),
-                                    'link': headline.get('link', '#'),
-                                    'importance': headline.get('importance', 'medium'),
-                                    'event_type': classification.get('event_type', 'Unknown'),
-                                    'sentiment': classification.get('sentiment', 'Neutral'),
-                                    'sector': classification.get('sector', 'General Market'),
-                                    'timestamp': datetime.now().isoformat(),
-                                    'id': headline.get('id')
-                                }
-                                
-                                # Add to trade alerts
-                                st.session_state.trade_alerts.append(alert)
-                        except Exception as e:
-                            # Just log the error and continue
-                            print(f"Error classifying headline: {str(e)}")
-                
-                # Sleep to avoid excessive CPU usage
-                time.sleep(10)
-        
-        # Start the background thread
-        processing_thread = threading.Thread(target=background_worker)
-        processing_thread.daemon = True
-        processing_thread.start()
-        
-def save_data():
-    """Save news, important headlines, and alerts to files"""
-    try:
-        # Save trade alerts
-        if st.session_state.trade_alerts:
-            with open('trade_alerts.json', 'w') as f:
-                json.dump(st.session_state.trade_alerts, f)
-        
-        # Save important headlines
-        if st.session_state.important_headlines:
-            with open('important_headlines.json', 'w') as f:
-                json.dump(st.session_state.important_headlines, f)
-        
-        # Save news feed (last 20 items only)
-        if st.session_state.news_feed:
-            with open('news_feed.json', 'w') as f:
-                json.dump(st.session_state.news_feed[:20], f)
-    except Exception as e:
-        print(f"Error saving data: {str(e)}")
-
-def load_data():
-    """Load saved news, important headlines, and alerts from files"""
-    try:
-        # Load trade alerts
-        if os.path.exists('trade_alerts.json'):
-            with open('trade_alerts.json', 'r') as f:
-                st.session_state.trade_alerts = json.load(f)
-        
-        # Load important headlines
-        if os.path.exists('important_headlines.json'):
-            with open('important_headlines.json', 'r') as f:
-                st.session_state.important_headlines = json.load(f)
-        
-        # Load news feed
-        if os.path.exists('news_feed.json'):
-            with open('news_feed.json', 'r') as f:
-                st.session_state.news_feed = json.load(f)
-                st.session_state.last_news_fetch = datetime.now()
-    except Exception as e:
-        print(f"Error loading data: {str(e)}")
 
 # Main app layout
 def main():
     # Initialize session state
     initialize_session_state()
     
-    # Start background processing for trade alerts
-    start_background_processing()
-    
-    # Register on_session_end to save data
-    if 'on_exit_setup' not in st.session_state:
-        st.session_state.on_exit_setup = True
-        # This is a workaround - we'll save periodically
-        def save_data_periodically():
-            while True:
-                time.sleep(300)  # Save every 5 minutes
-                save_data()
-                
-        save_thread = threading.Thread(target=save_data_periodically)
-        save_thread.daemon = True
-        save_thread.start()
-    
-    # Main title with help tooltip
-    st.title("Ooptions Market Analysis Platform")
-    
-    # Help expander
-    with st.expander("ℹ️ How to use this application"):
-        st.markdown("""
-        ### Welcome to the Ooptions Market Analysis Platform
-        
-        This application has three main tabs:
-        
-        **📰 News Feed**
-        - View the latest financial news from multiple sources
-        - Search and filter news by keywords or source
-        - Mark important headlines for trade alerts
-        - Auto-refreshes every 5 minutes to get the latest headlines
-        
-        **🚨 Trade Alerts**
-        - Automatically monitors news for potential trading opportunities
-        - Analyzes headlines with AI to determine market sentiment and impact
-        - Alerts are prioritized by importance (high, medium, low)
-        - Click "Generate Trade Idea" to analyze any alert further
-        
-        **🔍 Search**
-        - Ask questions about market events or historical data
-        - Analyze specific events and get detailed market impact information
-        - Maintain context across follow-up questions
-        - Get trade recommendations based on historical patterns
-        
-        Use the sidebar for sample queries and to reset the conversation as needed.
-        """)
-    
-    # Sidebar
-    with st.sidebar:
-        st.title("📈 Ooptions")
-        st.subheader("Market Event Analysis")
-        
-        # Reset button
-        st.button("Reset Conversation", on_click=reset_conversation, use_container_width=True)
-        
-        st.markdown("---")
-        st.markdown("### Sample Queries")
-        for query in SAMPLE_QUERIES:
-            st.button(query, on_click=use_sample_query, args=(query,), key=f"sample_{query[:20]}")
-            
-        # Show context information in sidebar when available
-        show_context_information()
-            
-        st.markdown("---")
+    # Check if welcome screen should be shown
+    if not st.session_state.welcome_shown:
+        # Display welcome screen
         st.markdown(
             """
-            ## About
-            
-            This tool analyzes market events and provides insights based on historical patterns 
-            and macroeconomic data.
-            
-            - Monitor financial news in real time
-            - Get automated trade alerts when important events occur
-            - Search and analyze historical market events
-            - Explore similar patterns across events
-            - Understand macro correlations
-            """
+            <div class="welcome-screen">
+                <div class="welcome-text">WELCOME.</div>
+            </div>
+            """,
+            unsafe_allow_html=True
         )
         
-        # Session info
-        st.markdown("---")
-        st.caption(f"Session ID: {st.session_state.session_id}")
-        st.caption(f"Queries: {st.session_state.query_count}")
-        if st.session_state.last_query_time:
-            st.caption(f"Last query: {st.session_state.last_query_time.strftime('%H:%M:%S')}")
-        if st.session_state.last_news_fetch:
-            st.caption(f"Last news update: {st.session_state.last_news_fetch.strftime('%H:%M:%S')}")
+        # Check if we've displayed the welcome screen for 0.5 second
+        if time.time() - st.session_state.welcome_time >= 0.5:
+            # Set welcome as shown
+            st.session_state.welcome_shown = True
+            st.rerun()
+        else:
+            # Wait remaining time to complete 0.5 second
+            time.sleep(max(0, 0.5 - (time.time() - st.session_state.welcome_time)))
+            st.session_state.welcome_shown = True
+            st.rerun()
+        return
     
-    # Initialize active tab if not set
-    if "active_tab" not in st.session_state:
-        st.session_state.active_tab = "Search"
+    # Sidebar with Bloomberg terminal style
+    with st.sidebar:
+        st.markdown(
+            """
+            <div class="logo-container">
+                <div class="logo-text">OPTION BOT</div>
+                <div class="logo-subtitle">MARKET INTELLIGENCE TERMINAL</div>
+            </div>
+            """, 
+            unsafe_allow_html=True
+        )
+        
+        # Reset button
+        st.button("RESET SESSION", on_click=reset_conversation, use_container_width=True)
+        
+        st.markdown('<div class="sidebar-section-header">SAMPLE QUERIES</div>', unsafe_allow_html=True)
+        for query in SAMPLE_QUERIES:
+            st.button(query.upper(), on_click=use_sample_query, args=(query,), key=f"sample_{query[:20]}")
+            
+        st.markdown('<div class="sidebar-section-header">TERMINAL INFO</div>', unsafe_allow_html=True)
+        st.markdown(
+            """
+            <div class="sidebar-info">
+            <p>OPTION BOT ANALYZES MARKET EVENTS AND PROVIDES INSIGHTS BASED ON HISTORICAL PATTERNS
+            AND MACROECONOMIC DATA.</p>
+            
+            <ul>
+              <li>ANALYZE HISTORICAL MARKET EVENTS</li>
+              <li>IDENTIFY MARKET REACTION PATTERNS</li>
+              <li>EXPLORE SIMILAR EVENT COMPARISONS</li>
+              <li>UNDERSTAND MACROECONOMIC INFLUENCES</li>
+              <li>GET ACTIONABLE TRADE IDEAS</li>
+            </ul>
+            </div>
+            """, 
+            unsafe_allow_html=True
+        )
+    
+    # Main content area with tabs
+    st.markdown("<h1 class='main-heading'>OPTIONS BOT TERMINAL</h1>", unsafe_allow_html=True)
     
     # Create tabs
-    tab1, tab2, tab3 = st.tabs(["📰 News Feed", "🚨 Trade Alerts", "🔍 Search"])
+    tab_names = ["COMMAND", "NEWS FEED"]
     
-    # Handle content for each tab
-    with tab1:
+    # Get tab index from query params if available
+    if "tab" in st.query_params:
+        try:
+            tab_index = int(st.query_params.tab)
+            if 0 <= tab_index < len(tab_names):
+                st.session_state.active_tab = tab_index
+        except ValueError:
+            pass
+    
+    # Create tab objects
+    tabs = st.tabs(tab_names)
+    
+    # Add JavaScript to maintain active tab on page reruns
+    active_tab_index = st.session_state.active_tab
+    js_code = f"""
+    <script>
+    // Wait for document to be fully loaded
+    document.addEventListener('DOMContentLoaded', function() {{
+        // Function to set the active tab
+        function setActiveTab(index) {{
+            setTimeout(function() {{
+                try {{
+                    // Get all tab buttons
+                    const tabButtons = document.querySelectorAll('button[role="tab"]');
+                    if (tabButtons.length > index) {{
+                        // Click the correct tab
+                        tabButtons[index].click();
+                    }}
+                }} catch (error) {{
+                    console.error('Error setting active tab:', error);
+                }}
+            }}, 100);
+        }}
+        
+        // Add click listeners to all tab buttons to update query params
+        const tabButtons = document.querySelectorAll('button[role="tab"]');
+        for (let i = 0; i < tabButtons.length; i++) {{
+            tabButtons[i].addEventListener('click', function() {{
+                // Update URL when tab is clicked
+                const newUrl = new URL(window.location.href);
+                newUrl.searchParams.set('tab', i);
+                window.history.replaceState(null, '', newUrl.toString());
+            }});
+        }}
+        
+        // Set initial active tab
+        setActiveTab({active_tab_index});
+    }});
+    </script>
+    """
+    st.markdown(js_code, unsafe_allow_html=True)
+    
+    # Chat tab
+    with tabs[0]:
+        display_chat_interface()
+        
+    # News Feed tab
+    with tabs[1]:
         display_news_feed()
+
+def get_table_download_link(df, filename="data.csv", link_text="Download CSV"):
+    """
+    Generates a link to download the provided dataframe as a CSV file
+    """
+    csv = df.to_csv(index=False)
+    b64 = base64.b64encode(csv.encode()).decode()  # B64 encoding
+    href = f'<a href="data:file/csv;base64,{b64}" download="{filename}">⬇️ {link_text}</a>'
+    return href
+
+def filter_headlines(headlines, search_query="", date_filter=None, selected_sources=None, max_headlines=50):
+    """
+    Filter headlines based on search query, date range, and sources
     
-    with tab2:
-        display_trade_alerts()
+    Parameters:
+    - headlines: List of headline dictionaries
+    - search_query: Text to search in headlines
+    - date_filter: Tuple of (start_date, end_date) as datetime objects
+    - selected_sources: List of sources to include
+    - max_headlines: Maximum number of headlines to display
     
-    with tab3:
-        display_search_interface()
+    Returns:
+    - Filtered list of headlines
+    """
+    filtered = headlines.copy()
     
-    # Fetch initial news data if needed
-    if st.session_state.news_feed == [] and st.session_state.last_news_fetch is None:
-        fetch_news()
+    # Apply search filter if provided
+    if search_query:
+        filtered = [
+            h for h in filtered 
+            if search_query.lower() in h.get("title", "").lower() or 
+               search_query.lower() in h.get("summary", "").lower()
+        ]
+    
+    # Apply source filter if provided
+    if selected_sources:
+        filtered = [h for h in filtered if h.get("source", "Unknown") in selected_sources]
+    
+    # Apply date filter if provided
+    if date_filter and isinstance(date_filter, tuple) and len(date_filter) == 2:
+        start_date, end_date = date_filter
+        if start_date and end_date:
+            # Convert datetime objects to dates if needed
+            if not isinstance(start_date, datetime):
+                start_date = datetime.combine(start_date, datetime.min.time()).replace(tzinfo=pytz.UTC)
+            if not isinstance(end_date, datetime):
+                end_date = datetime.combine(end_date, datetime.max.time()).replace(tzinfo=pytz.UTC)
+            
+            filtered = [
+                h for h in filtered 
+                if h.get("published") and start_date <= parser.parse(h.get("published")).replace(tzinfo=pytz.UTC) <= end_date
+            ]
+    
+    # Limit to max_headlines
+    return filtered[:max_headlines]
 
 if __name__ == "__main__":
     main() 

@@ -30,7 +30,7 @@ from dotenv import load_dotenv
 from macro_data_collector import get_macro_snapshot, get_fred_data, FRED_METRICS, FALLBACK_VALUES
 from options_data_collector import get_options_snapshot
 from event_tagger import generate_event_tags
-from llm_event_classifier import classify_macro_event, OPENAI_API_KEY
+from llm_event_classifier import classify_macro_event
 from trade_picker import generate_trade_idea
 from event_analyzer import standardize_ticker, fetch_market_data, calculate_price_changes
 from historical_matcher import find_similar_historical_events, DEFAULT_MARKET_TICKER
@@ -47,9 +47,37 @@ import analysis_persistence as ap
 from rss_ingestor import fetch_rss_headlines
 import html
 
-# Initialize OpenAI client with proper configuration for new SDK
-from openai import OpenAI
-client = OpenAI(api_key=OPENAI_API_KEY)
+# Load environment variables
+load_dotenv()
+
+# Get API keys from environment
+# Read API key directly from .env file to ensure we get the current value
+try:
+    with open('.env', 'r') as f:
+        env_contents = f.read()
+        for line in env_contents.splitlines():
+            if line.startswith('OPENAI_API_KEY='):
+                OPENAI_API_KEY = line.split('=', 1)[1]
+                print(f"✅ OpenAI API key loaded directly from .env file: {OPENAI_API_KEY[:4]}...{OPENAI_API_KEY[-4:]}")
+                break
+        else:
+            OPENAI_API_KEY = None
+            print("❌ ERROR: OPENAI_API_KEY not found in .env file")
+except Exception as e:
+    print(f"❌ ERROR reading .env file: {str(e)}")
+    OPENAI_API_KEY = None
+
+# Fallback to environment variable if direct read failed
+if not OPENAI_API_KEY:
+    OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
+    if OPENAI_API_KEY:
+        print(f"✅ OpenAI API key loaded from environment variable: {OPENAI_API_KEY[:4]}...{OPENAI_API_KEY[-4:]}")
+    else:
+        print("❌ ERROR: OpenAI API key not found in environment")
+        print("Please add your OpenAI API key to the .env file with the variable name OPENAI_API_KEY")
+
+# Set the API key for the openai module
+openai.api_key = OPENAI_API_KEY
 
 # Define default model from environment or use a fallback
 DEFAULT_MODEL = os.getenv('OPENAI_MODEL', "gpt-3.5-turbo")
@@ -1472,7 +1500,7 @@ def call_openai_with_retry(model, messages, temperature=0.3, response_format=Non
             if response_format:
                 kwargs["response_format"] = response_format
                 
-            return client.chat.completions.create(**kwargs)
+            return openai.chat.completions.create(**kwargs)
             
         except openai.RateLimitError as e:
             wait_time = min(2 ** attempts * RETRY_DELAY_SECONDS, 60)  # Exponential backoff
