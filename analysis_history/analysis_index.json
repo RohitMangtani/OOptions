@@ -1,0 +1,43 @@
+{
+  "events": {
+    "BTC-USD": [
+      {
+        "event_date": "2024-01-10",
+        "price_change": -9.52,
+        "trend": "Bearish",
+        "file_path": "analysis_history\\events\\BTC_USD_2024_01_10_20250415_050603.json",
+        "saved_at": "2025-04-15 05:06:03"
+      }
+    ]
+  },
+  "similar_events": {
+    "Strong bearish trend with significant volatility": [
+      {
+        "dominant_ticker": "BTC-USD",
+        "avg_price_change": -8.75,
+        "consistency_score": 85,
+        "file_path": "analysis_history\\similar_events\\BTC_USD_Strong_bearish_trend_with_significant_vola_20250415_050603.json",
+        "saved_at": "2025-04-15 05:06:03"
+      }
+    ]
+  },
+  "last_updated": "2025-04-15 05:06:03",
+  "query_history": [
+    {
+      "query": "What happened when Bitcoin ETF was approved?",
+      "timestamp": "2025-04-15 05:06:03",
+      "result_type": "historical_event",
+      "ticker": "BTC-USD",
+      "event_date": "2024-01-10",
+      "file_path": "analysis_history\\events\\BTC_USD_2024_01_10_20250415_050603.json"
+    },
+    {
+      "query": "What happens to crypto markets after ETF approvals?",
+      "timestamp": "2025-04-15 05:06:03",
+      "result_type": "similar_events",
+      "pattern": "Strong bearish trend with significant volatility",
+      "dominant_ticker": "BTC-USD",
+      "file_path": "analysis_history\\similar_events\\BTC_USD_Strong_bearish_trend_with_significant_vola_20250415_050603.json"
+    }
+  ]
+}

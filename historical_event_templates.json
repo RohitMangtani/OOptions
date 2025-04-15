@@ -1,0 +1,152 @@
+[
+  {
+    "event_summary": "Fed announces emergency rate cut during COVID-19",
+    "event_type": "Monetary Policy",
+    "sentiment": "Bullish",
+    "sector": "Financials",
+    "event_date": "2020-03-03",
+    "affected_ticker": "SPY",
+    "price_change_pct": -8.62,
+    "max_drawdown_pct": -7.34
+  },
+  {
+    "event_summary": "Fed raises interest rates by 75 basis points",
+    "event_type": "Monetary Policy",
+    "sentiment": "Bearish",
+    "sector": "Financials",
+    "event_date": "2022-06-15",
+    "affected_ticker": "SPY",
+    "price_change_pct": 3.31,
+    "max_drawdown_pct": -1.29
+  },
+  {
+    "event_summary": "Fed signals pause in rate hikes after continuous increases",
+    "event_type": "Monetary Policy",
+    "sentiment": "Bullish",
+    "sector": "Financials",
+    "event_date": "2023-09-20",
+    "affected_ticker": "SPY",
+    "price_change_pct": -2.18,
+    "max_drawdown_pct": -2.18
+  },
+  {
+    "event_summary": "Inflation reaches 40-year high at 9.1%",
+    "event_type": "Inflation",
+    "sentiment": "Bearish",
+    "sector": "General",
+    "event_date": "2022-06-10",
+    "affected_ticker": "SPY",
+    "price_change_pct": -3.36,
+    "max_drawdown_pct": -6.04
+  },
+  {
+    "event_summary": "CPI data shows inflation cooling below expectations",
+    "event_type": "Inflation",
+    "sentiment": "Bullish",
+    "sector": "General",
+    "event_date": "2023-11-14",
+    "affected_ticker": "SPY",
+    "price_change_pct": 1.4,
+    "max_drawdown_pct": -0.17
+  },
+  {
+    "event_summary": "Russia invades Ukraine triggering global market selloff",
+    "event_type": "Geopolitical",
+    "sentiment": "Bearish",
+    "sector": "Energy",
+    "event_date": "2022-02-24",
+    "affected_ticker": "XLE",
+    "price_change_pct": 12.1,
+    "max_drawdown_pct": -1.85
+  },
+  {
+    "event_summary": "US-China Phase One trade deal signed",
+    "event_type": "Trade",
+    "sentiment": "Bullish",
+    "sector": "Technology",
+    "event_date": "2020-01-15",
+    "affected_ticker": "QQQ",
+    "price_change_pct": 1.15,
+    "max_drawdown_pct": -0.53
+  },
+  {
+    "event_summary": "Biden signs Inflation Reduction Act with climate provisions",
+    "event_type": "Fiscal Policy",
+    "sentiment": "Bullish",
+    "sector": "Energy",
+    "event_date": "2022-08-16",
+    "affected_ticker": "TAN",
+    "price_change_pct": -2.54,
+    "max_drawdown_pct": -5.69
+  },
+  {
+    "event_summary": "SEC charges cryptocurrency companies with securities violations",
+    "event_type": "Regulation",
+    "sentiment": "Bearish",
+    "sector": "Financials",
+    "event_date": "2023-06-05",
+    "affected_ticker": "BTCUSD",
+    "price_change_pct": 0.62,
+    "max_drawdown_pct": -5.94
+  },
+  {
+    "event_summary": "US GDP contracts 32.9% in Q2 2020 during COVID lockdowns",
+    "event_type": "Economic Growth",
+    "sentiment": "Bearish",
+    "sector": "General",
+    "event_date": "2020-07-30",
+    "affected_ticker": "SPY",
+    "price_change_pct": 3.28,
+    "max_drawdown_pct": -0.16
+  },
+  {
+    "event_summary": "Silicon Valley Bank collapse triggers banking crisis",
+    "event_type": "Financial Crisis",
+    "sentiment": "Bearish",
+    "sector": "Financials",
+    "event_date": "2023-03-10",
+    "affected_ticker": "XLF",
+    "price_change_pct": -4.87,
+    "max_drawdown_pct": -4.33
+  },
+  {
+    "event_summary": "Oil prices crash into negative territory for first time",
+    "event_type": "Commodity Shock",
+    "sentiment": "Bearish",
+    "sector": "Energy",
+    "event_date": "2020-04-20",
+    "affected_ticker": "USO",
+    "price_change_pct": -43.2,
+    "max_drawdown_pct": -38.62
+  },
+  {
+    "event_summary": "Apple announces strong iPhone sales beating expectations",
+    "event_type": "Corporate Earnings",
+    "sentiment": "Bullish",
+    "sector": "Technology",
+    "event_date": "2023-02-02",
+    "affected_ticker": "AAPL",
+    "price_change_pct": 0.28,
+    "max_drawdown_pct": -0.2
+  },
+  {
+    "event_summary": "Meta (Facebook) stock crashes on weak guidance",
+    "event_type": "Corporate Earnings",
+    "sentiment": "Bearish",
+    "sector": "Technology",
+    "event_date": "2022-02-03",
+    "affected_ticker": "META",
+    "price_change_pct": -7.66,
+    "max_drawdown_pct": -1.26
+  },
+  {
+    "event_summary": "Microsoft acquires Activision Blizzard in gaming push",
+    "event_type": "M&A",
+    "sentiment": "Bullish",
+    "sector": "Technology",
+    "event_date": "2022-01-18",
+    "affected_ticker": "MSFT",
+    "price_change_pct": -1.96,
+    "max_drawdown_pct": -7.35
+  }
+]

@@ -1,0 +1,207 @@
+[
+  {
+    "timestamp": "2025-04-14T22:43:54.134178",
+    "headline": {
+      "title": "Symbotic Inc. (SYM) Stock Declines While Market Improves: Some Information for Investors",
+      "source": "Yahoo Finance",
+      "published": "2025-04-14T22:15:17Z",
+      "event_type": "Corporate Earnings",
+      "sentiment": "Bearish",
+      "sector": "Technology"
+    },
+    "similar_events": [
+      {
+        "event_summary": "Meta (Facebook) stock crashes on weak guidance",
+        "event_date": "2022-02-03",
+        "match_score": 1.0,
+        "price_change_pct": -7.658975135707302,
+        "affected_ticker": "META"
+      },
+      {
+        "event_summary": "Apple announces strong iPhone sales beating expectations",
+        "event_date": "2023-02-02",
+        "match_score": 0.7,
+        "price_change_pct": 0.2788792468622736,
+        "affected_ticker": "AAPL"
+      },
+      {
+        "event_summary": "Fed raises interest rates by 75 basis points",
+        "event_date": "2022-06-15",
+        "match_score": 0.3,
+        "price_change_pct": 3.313567365619896,
+        "affected_ticker": "SPY"
+      }
+    ],
+    "trade_idea": {
+      "ticker": "META",
+      "option_type": "CALL",
+      "strike": 531,
+      "expiry": "2025-04-25",
+      "rationale": "Event similar to Meta (Facebook) stock crashes on weak guidance on 2022-02-03, which caused a 0.0% gain in META. Match score: 1.00. Current event classified as Corporate Earnings, Bearish, affecting Technology. Suggests upside potential."
+    }
+  },
+  {
+    "timestamp": "2025-04-14T22:45:13.795559",
+    "headline": {
+      "title": "Symbotic Inc. (SYM) Stock Declines While Market Improves: Some Information for Investors",
+      "source": "Yahoo Finance",
+      "published": "2025-04-14T22:15:17Z",
+      "event_type": "Corporate Earnings",
+      "sentiment": "Bearish",
+      "sector": "Technology"
+    },
+    "similar_events": [
+      {
+        "event_summary": "Meta (Facebook) stock crashes on weak guidance",
+        "event_date": "2022-02-03",
+        "match_score": 1.0,
+        "price_change_pct": -7.658975135707302,
+        "affected_ticker": "META"
+      },
+      {
+        "event_summary": "Apple announces strong iPhone sales beating expectations",
+        "event_date": "2023-02-02",
+        "match_score": 0.7,
+        "price_change_pct": 0.2788689834684721,
+        "affected_ticker": "AAPL"
+      },
+      {
+        "event_summary": "Fed raises interest rates by 75 basis points",
+        "event_date": "2022-06-15",
+        "match_score": 0.3,
+        "price_change_pct": 3.3135502701501007,
+        "affected_ticker": "SPY"
+      }
+    ],
+    "trade_idea": {
+      "ticker": "META",
+      "option_type": "CALL",
+      "strike": 531,
+      "expiry": "2025-04-25",
+      "rationale": "Event similar to Meta (Facebook) stock crashes on weak guidance on 2022-02-03, which caused a 0.0% gain in META. Match score: 1.00. Current event classified as Corporate Earnings, Bearish, affecting Technology. Suggests upside potential."
+    }
+  },
+  {
+    "timestamp": "2025-04-14T22:46:03.066428",
+    "headline": {
+      "title": "Oil prices surge after OPEC announces production cut by 2 million barrels per day",
+      "source": "User Input",
+      "published": "2025-04-14T22:46:01.246264",
+      "event_type": "Trade",
+      "sentiment": "Bullish",
+      "sector": "Energy"
+    },
+    "similar_events": [
+      {
+        "event_summary": "US-China Phase One trade deal signed",
+        "event_date": "2020-01-15",
+        "match_score": 0.8,
+        "price_change_pct": 1.1491051267695562,
+        "affected_ticker": "QQQ"
+      },
+      {
+        "event_summary": "Biden signs Inflation Reduction Act with climate provisions",
+        "event_date": "2022-08-16",
+        "match_score": 0.5,
+        "price_change_pct": -2.281806165244782,
+        "affected_ticker": "TAN"
+      },
+      {
+        "event_summary": "Fed announces emergency rate cut during COVID-19",
+        "event_date": "2020-03-03",
+        "match_score": 0.3,
+        "price_change_pct": -8.619784163959732,
+        "affected_ticker": "SPY"
+      }
+    ],
+    "trade_idea": {
+      "ticker": "QQQ",
+      "option_type": "CALL",
+      "strike": 457,
+      "expiry": "2025-04-21",
+      "rationale": "Event similar to US-China Phase One trade deal signed on 2020-01-15, which caused a 0.0% gain in QQQ. Match score: 0.80. Current event classified as Trade, Bullish, affecting Energy. Suggests upside potential."
+    }
+  },
+  {
+    "timestamp": "2025-04-14T22:46:18.611126",
+    "headline": {
+      "title": "Inflation data shows surprising 6.2% increase",
+      "source": "User Input",
+      "published": "2025-04-14T22:46:16.975925",
+      "event_type": "Inflation",
+      "sentiment": "Bearish",
+      "sector": "General"
+    },
+    "similar_events": [
+      {
+        "event_summary": "Inflation reaches 40-year high at 9.1%",
+        "event_date": "2022-06-10",
+        "match_score": 1.0,
+        "price_change_pct": -3.3632036833845413,
+        "affected_ticker": "SPY"
+      },
+      {
+        "event_summary": "CPI data shows inflation cooling below expectations",
+        "event_date": "2023-11-14",
+        "match_score": 0.7,
+        "price_change_pct": 1.401735640778412,
+        "affected_ticker": "SPY"
+      },
+      {
+        "event_summary": "US GDP contracts 32.9% in Q2 2020 during COVID lockdowns",
+        "event_date": "2020-07-30",
+        "match_score": 0.5,
+        "price_change_pct": 3.2751222748966136,
+        "affected_ticker": "SPY"
+      }
+    ],
+    "trade_idea": {
+      "ticker": "SPY",
+      "option_type": "CALL",
+      "strike": 539,
+      "expiry": "2025-04-21",
+      "rationale": "Event similar to Inflation reaches 40-year high at 9.1% on 2022-06-10, which caused a 0.0% gain in SPY. Match score: 1.00. Current event classified as Inflation, Bearish, affecting General. Suggests upside potential."
+    }
+  },
+  {
+    "timestamp": "2025-04-14T22:48:39.715682",
+    "headline": {
+      "title": "Symbotic Inc. (SYM) Stock Declines While Market Improves: Some Information for Investors",
+      "source": "Yahoo Finance",
+      "published": "2025-04-14T22:15:17Z",
+      "event_type": "Corporate Earnings",
+      "sentiment": "Bearish",
+      "sector": "Technology"
+    },
+    "similar_events": [
+      {
+        "event_summary": "Meta (Facebook) stock crashes on weak guidance",
+        "event_date": "2022-02-03",
+        "match_score": 1.0,
+        "price_change_pct": -7.658969181581099,
+        "affected_ticker": "META"
+      },
+      {
+        "event_summary": "Apple announces strong iPhone sales beating expectations",
+        "event_date": "2023-02-02",
+        "match_score": 0.7,
+        "price_change_pct": 0.2788484852268569,
+        "affected_ticker": "AAPL"
+      },
+      {
+        "event_summary": "Fed raises interest rates by 75 basis points",
+        "event_date": "2022-06-15",
+        "match_score": 0.3,
+        "price_change_pct": 3.3135760526656677,
+        "affected_ticker": "SPY"
+      }
+    ],
+    "trade_idea": {
+      "ticker": "META",
+      "option_type": "PUT",
+      "strike": 519,
+      "expiry": "2025-04-25",
+      "rationale": "Event similar to Meta (Facebook) stock crashes on weak guidance on 2022-02-03, which caused a 7.66% drop in META. Match score: 1.00. Current event classified as Corporate Earnings, Bearish, affecting Technology. Suggests downside risk."
+    }
+  }
+]

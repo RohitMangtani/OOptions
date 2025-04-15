@@ -1,0 +1,17 @@
+{
+  "success": true,
+  "pattern_summary": "Strong bearish trend with significant volatility",
+  "consistency_score": 85,
+  "avg_price_change": -8.75,
+  "avg_max_drawdown": 12.5,
+  "bullish_pct": 20,
+  "bearish_pct": 80,
+  "dominant_sector": "Cryptocurrency",
+  "dominant_ticker": "BTC-USD",
+  "similar_events_count": 5,
+  "_metadata": {
+    "saved_at": "2025-04-15 05:06:03",
+    "query": "What happens to crypto markets after ETF approvals?",
+    "file_path": "analysis_history\\similar_events\\BTC_USD_Strong_bearish_trend_with_significant_vola_20250415_050603.json"
+  }
+}

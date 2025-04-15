@@ -1,0 +1,23 @@
+{
+  "success": true,
+  "ticker": "BTC-USD",
+  "event_date": "2024-01-10",
+  "price_change_pct": -9.52,
+  "max_drawdown_pct": -15.67,
+  "start_price": 46000.0,
+  "end_price": 42000.0,
+  "trend": "Bearish",
+  "volatility_pct": 5.23,
+  "days_analyzed": 7,
+  "date_range_analyzed": "2024-01-10 to 2024-01-17",
+  "macro_data": {
+    "CPI_YoY": 3.4,
+    "FedFundsRate": 5.25,
+    "Unemployment": 3.7
+  },
+  "_metadata": {
+    "saved_at": "2025-04-15 05:06:03",
+    "query": "What happened when Bitcoin ETF was approved?",
+    "file_path": "analysis_history\\events\\BTC_USD_2024_01_10_20250415_050603.json"
+  }
+}

@@ -1,0 +1,276 @@
+[
+  {
+    "headline": {
+      "title": "Test headline for AAPL trade",
+      "source": "Test Source",
+      "published": "2025-04-14T23:46:36.063752",
+      "event_type": "Test Event",
+      "sentiment": "Positive",
+      "sector": "Technology"
+    },
+    "similar_events": [
+      {
+        "event_summary": "Historical AAPL event 1",
+        "event_date": "2023-01-15",
+        "match_score": 0.85,
+        "price_change_pct": 5.2,
+        "affected_ticker": "AAPL"
+      },
+      {
+        "event_summary": "Historical AAPL event 2",
+        "event_date": "2022-06-10",
+        "match_score": 0.72,
+        "price_change_pct": 3.8,
+        "affected_ticker": "AAPL"
+      }
+    ],
+    "trade_idea": {
+      "ticker": "AAPL",
+      "option_type": "CALL",
+      "strike": 180.0,
+      "expiry": "2023-12-15",
+      "rationale": "Test CALL trade for AAPL based on historical patterns."
+    },
+    "saved_timestamp": "2025-04-14T23:46:36.063752"
+  },
+  {
+    "headline": {
+      "title": "Test headline for AAPL trade",
+      "source": "Test Source",
+      "published": "2025-04-14T23:46:52.973851",
+      "event_type": "Test Event",
+      "sentiment": "Positive",
+      "sector": "Technology"
+    },
+    "similar_events": [
+      {
+        "event_summary": "Historical AAPL event 1",
+        "event_date": "2023-01-15",
+        "match_score": 0.85,
+        "price_change_pct": 5.2,
+        "affected_ticker": "AAPL"
+      },
+      {
+        "event_summary": "Historical AAPL event 2",
+        "event_date": "2022-06-10",
+        "match_score": 0.72,
+        "price_change_pct": 3.8,
+        "affected_ticker": "AAPL"
+      }
+    ],
+    "trade_idea": {
+      "ticker": "AAPL",
+      "option_type": "CALL",
+      "strike": 180.0,
+      "expiry": "2023-12-15",
+      "rationale": "Test CALL trade for AAPL based on historical patterns."
+    },
+    "saved_timestamp": "2025-04-14T23:46:52.973851"
+  },
+  {
+    "headline": {
+      "title": "Test headline for MSFT trade",
+      "source": "Test Source",
+      "published": "2025-04-14T23:46:52.974855",
+      "event_type": "Test Event",
+      "sentiment": "Negative",
+      "sector": "Technology"
+    },
+    "similar_events": [
+      {
+        "event_summary": "Historical MSFT event 1",
+        "event_date": "2023-01-15",
+        "match_score": 0.85,
+        "price_change_pct": -4.8,
+        "affected_ticker": "MSFT"
+      },
+      {
+        "event_summary": "Historical MSFT event 2",
+        "event_date": "2022-06-10",
+        "match_score": 0.72,
+        "price_change_pct": -3.5,
+        "affected_ticker": "MSFT"
+      }
+    ],
+    "trade_idea": {
+      "ticker": "MSFT",
+      "option_type": "PUT",
+      "strike": 350.0,
+      "expiry": "2023-12-15",
+      "rationale": "Test PUT trade for MSFT based on historical patterns."
+    },
+    "saved_timestamp": "2025-04-14T23:46:52.974855"
+  },
+  {
+    "headline": {
+      "title": "Global investors dump holdings of US stocks at record pace, BofA survey says",
+      "source": "Yahoo Finance",
+      "published": "2025-04-15T06:36:40Z",
+      "event_type": "Market Sentiment Shift",
+      "sentiment": "Bearish",
+      "sector": "US Equities"
+    },
+    "llm_output": {},
+    "similar_events": [
+      {
+        "event_summary": "Fed raises interest rates by 75 basis points",
+        "event_date": "2022-06-15",
+        "match_score": 0.3,
+        "price_change_pct": 3.313584739712927,
+        "affected_ticker": "SPY"
+      },
+      {
+        "event_summary": "Inflation reaches 40-year high at 9.1%",
+        "event_date": "2022-06-10",
+        "match_score": 0.3,
+        "price_change_pct": -3.3632036833845413,
+        "affected_ticker": "SPY"
+      },
+      {
+        "event_summary": "Russia invades Ukraine triggering global market selloff",
+        "event_date": "2022-02-24",
+        "match_score": 0.3,
+        "price_change_pct": 12.099543724873518,
+        "affected_ticker": "XLE"
+      }
+    ],
+    "trade_idea": {
+      "ticker": "XLE",
+      "trade_type": "equity",
+      "direction": "SELL",
+      "option_type": null,
+      "strike": null,
+      "expiry": null,
+      "rationale": "Event similar to Russia invades Ukraine triggering global market selloff on 2022-02-24, which caused a 12.10% gain in XLE. Match score: 0.30. Current event classified as Market Sentiment Shift, Bearish, affecting US Equities. Suggests upside potential. Using equity (SELL) due to bearish sentiment with risk factors: positive surprise in bearish context."
+    },
+    "timestamp": "2025-04-15T02:49:12.463263",
+    "saved_timestamp": "2025-04-15T02:49:12.463263",
+    "macro_snapshot": {
+      "VIX": 30.889999389648438,
+      "SPY_Price": 539.1199951171875,
+      "Gold": 296.2300109863281,
+      "DXY": 99.66000366210938,
+      "TenYearYield": 4.363999843597412,
+      "TwoYearYield": 4.797999858856201,
+      "CPI_Expected": 3.4,
+      "CoreCPI": 2.8,
+      "CorePCE": 2.8,
+      "ConsumerSentiment": 64.7,
+      "RealGDP_YoY": 2.4,
+      "InitialJoblessClaims": 223.0,
+      "FedFundsRate": 4.33,
+      "Unemployment": 4.2,
+      "Fed_Funds_Rate": 4.33,
+      "CPI_YoY": 3.5
+    },
+    "options_snapshot": {
+      "IV_atm": 1.0000000000000003e-05,
+      "IV_put_5pct_OTM": 0.0312596875,
+      "IV_call_5pct_OTM": 0.0312596875,
+      "IV_skew": 0.0,
+      "put_call_ratio": 1.9465515738076553,
+      "open_interest_total": 0.0,
+      "open_interest_change": null
+    },
+    "options_ticker": "SPY",
+    "technical_indicators": {
+      "rsi": null,
+      "macd_cross": "unknown",
+      "sma_50": null,
+      "sma_200": null,
+      "trend_cross": "unknown",
+      "trend": "unknown",
+      "last_close": null,
+      "_calculation_date": "2025-04-15",
+      "_error": "The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all()."
+    },
+    "event_tags": {},
+    "prompt_enhancers": {}
+  },
+  {
+    "headline": {
+      "title": "Global investors dump holdings of US stocks at record pace, BofA survey says",
+      "source": "Yahoo Finance",
+      "published": "2025-04-15T06:36:40Z",
+      "event_type": "Market Sentiment Shift",
+      "sentiment": "Bearish",
+      "sector": "US Equities"
+    },
+    "llm_output": {},
+    "similar_events": [
+      {
+        "event_summary": "Fed raises interest rates by 75 basis points",
+        "event_date": "2022-06-15",
+        "match_score": 0.3,
+        "price_change_pct": 3.3135505487675188,
+        "affected_ticker": "SPY"
+      },
+      {
+        "event_summary": "Inflation reaches 40-year high at 9.1%",
+        "event_date": "2022-06-10",
+        "match_score": 0.3,
+        "price_change_pct": -3.3632113129515195,
+        "affected_ticker": "SPY"
+      },
+      {
+        "event_summary": "Russia invades Ukraine triggering global market selloff",
+        "event_date": "2022-02-24",
+        "match_score": 0.3,
+        "price_change_pct": 12.099538101374584,
+        "affected_ticker": "XLE"
+      }
+    ],
+    "trade_idea": {
+      "ticker": "XLE",
+      "trade_type": "equity",
+      "direction": "SELL",
+      "option_type": null,
+      "strike": null,
+      "expiry": null,
+      "rationale": "Event similar to Russia invades Ukraine triggering global market selloff on 2022-02-24, which caused a 12.10% gain in XLE. Match score: 0.30. Current event classified as Market Sentiment Shift, Bearish, affecting US Equities. Suggests upside potential. Using equity (SELL) due to bearish sentiment with risk factors: positive surprise in bearish context."
+    },
+    "timestamp": "2025-04-15T02:51:46.259206",
+    "saved_timestamp": "2025-04-15T02:51:46.259206",
+    "macro_snapshot": {
+      "VIX": 30.889999389648438,
+      "SPY_Price": 539.1199951171875,
+      "Gold": 296.2300109863281,
+      "DXY": 99.66000366210938,
+      "TenYearYield": 4.363999843597412,
+      "TwoYearYield": 4.797999858856201,
+      "CPI_Expected": 3.4,
+      "CoreCPI": 2.8,
+      "CorePCE": 2.8,
+      "ConsumerSentiment": 64.7,
+      "RealGDP_YoY": 2.4,
+      "InitialJoblessClaims": 223.0,
+      "FedFundsRate": 4.33,
+      "Unemployment": 4.2,
+      "Fed_Funds_Rate": 4.33,
+      "CPI_YoY": 3.5
+    },
+    "options_snapshot": {
+      "IV_atm": 1.0000000000000003e-05,
+      "IV_put_5pct_OTM": 0.0312596875,
+      "IV_call_5pct_OTM": 0.0312596875,
+      "IV_skew": 0.0,
+      "put_call_ratio": 1.9465515738076553,
+      "open_interest_total": 0.0,
+      "open_interest_change": null
+    },
+    "options_ticker": "SPY",
+    "technical_indicators": {
+      "rsi": null,
+      "macd_cross": "unknown",
+      "sma_50": null,
+      "sma_200": null,
+      "trend_cross": "unknown",
+      "trend": "unknown",
+      "last_close": null,
+      "_calculation_date": "2025-04-15",
+      "_error": "The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all()."
+    },
+    "event_tags": {},
+    "prompt_enhancers": {}
+  }
+]

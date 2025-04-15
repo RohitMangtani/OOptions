@@ -1,0 +1,38 @@
+========== FINANCIAL NEWS SNAPSHOT ==========
+Showing 5 headlines from 5 news sources
+Generated at: 2025-04-14 19:50:53
+============================================
+
+News Sources:
+  1. Yahoo Finance
+  2. CNBC Markets
+  3. Reuters Business
+  4. Financial Times
+  5. Bloomberg (via Feedly)
+
+Latest Headlines:
+1. Trump administration says it lacks authority to get Abrego Garcia back from El Salvador
+   2025-04-14T23:08:19Z | CNBC Markets
+   LLM Analysis: Geopolitical | Neutral | General
+   URL: https://www.cnbc.com/2025/04/14/abrego-garcia-el-salvador-trump-nayib-bukele.html
+
+2. S&P 500 death cross, recession fears, dollar's moves: Market recap
+   2025-04-14T22:06:25Z | Yahoo Finance
+   LLM Analysis: Economic Growth | Bearish | Financials
+   URL: https://finance.yahoo.com/video/p-500-death-cross-recession-220625971.html?.tsrc=rss
+
+3. Harvard University rejects Trump DEI demands, imperiling $9 billion in federal funding
+   2025-04-14T22:05:54Z | CNBC Markets
+   LLM Analysis: Regulation | Bearish | Education
+   URL: https://www.cnbc.com/2025/04/14/trump-harvard-deal-funding-billion-dei.html
+
+4. Procter & Gamble (PG) Outpaces Stock Market Gains: What You Should Know
+   2025-04-14T22:00:17Z | Yahoo Finance
+   LLM Analysis: Corporate Earnings | Bullish | Consumer
+   URL: https://finance.yahoo.com/news/procter-gamble-pg-outpaces-stock-220017936.html?.tsrc=rss
+
+5. Organon (OGN) Laps the Stock Market: Here's Why
+   2025-04-14T22:00:17Z | Yahoo Finance
+   LLM Analysis: Corporate Earnings | Bullish | Healthcare
+   URL: https://finance.yahoo.com/news/organon-ogn-laps-stock-market-220017558.html?.tsrc=rss
+

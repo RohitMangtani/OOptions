@@ -1,0 +1,22 @@
+{
+  "VIX": 28.440000534057617,
+  "SPY_Price": 539.135009765625,
+  "Gold": 297.239990234375,
+  "DXY": 100.05799865722656,
+  "TenYearYield": 4.372000217437744,
+  "TwoYearYield": 4.817999839782715,
+  "CPI_Expected": 4.3,
+  "CPI_YoY": 2.4,
+  "CoreCPI": 2.8,
+  "CorePCE": 2.81,
+  "ConsumerSentiment": 64.7,
+  "RealGDP_YoY": 2.4,
+  "InitialJoblessClaims": 223.0,
+  "FedFundsRate": 4.33,
+  "Unemployment": 4.2,
+  "Fed_Funds_Rate": 4.33,
+  "_data_source": "yfinance_live+fred_live",
+  "_timestamp": "2025-04-15T10:27:51.019060",
+  "_error": "",
+  "_live_percentage": 100.0
+}

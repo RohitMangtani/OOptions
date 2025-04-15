@@ -1,0 +1,237 @@
+Read file: Context.txt
+```json
+{
+  "project": "Ooptions - Financial News and Market Event Analysis System",
+  "description": "A comprehensive system for analyzing financial news headlines, classifying market events, matching them to historical patterns, generating trading recommendations based on macro data and event analysis, and evaluating trade performance.",
+  "files": {
+    "llm_event_query.py": {
+      "purpose": "Main entry point for querying market events, analyzing them, and generating trade recommendations",
+      "classes": [],
+      "functions": ["sanitize_text", "is_valid_market_query", "standardize_crypto_ticker", "extract_tickers_from_text", "extract_date_from_query", "analyze_historical_event", "generate_enhanced_trade", "process_query", "analyze_similar_events", "call_openai_with_retry", "main"],
+      "constants": ["OPENAI_API_KEY", "DEFAULT_MODEL", "CRYPTO_MAPPINGS", "MAX_RETRIES", "RETRY_DELAY_SECONDS", "ERROR_MESSAGES"],
+      "calls": ["imports from llm_event_classifier", "imports from macro_data_collector", "imports from options_data_collector", "imports from event_tagger", "imports from trade_picker", "imports from historical_matcher", "imports from event_analyzer", "imports from sentiment_analyzer", "imports from analysis_persistence"]
+    },
+    "llm_event_classifier.py": {
+      "purpose": "Classifies financial headlines by event type, sentiment, and sector using OpenAI or a local dummy classifier",
+      "classes": ["DummyClassifier", "OpenAIClassifier"],
+      "functions": ["get_classifier", "classify_macro_event", "classify_all_headlines"],
+      "constants": ["MODEL_TYPE", "OPENAI_API_KEY", "DEFAULT_MODEL", "MAX_RETRIES", "RETRY_DELAY", "USE_MACRO_CONTEXT", "USE_OPTIONS_CONTEXT"],
+      "calls": ["imports from rss_ingestor", "imports from macro_data_collector", "imports from options_data_collector", "imports from event_tagger", "imports from prompt_context_builder"]
+    },
+    "event_tagger.py": {
+      "purpose": "Generates context tags for financial events based on headline, market data, and timing",
+      "classes": [],
+      "functions": ["generate_event_tags", "_month_day_to_ordinal", "_normalize_headline_for_comparison", "_calculate_similarity", "_calculate_text_similarity", "_add_to_event_cache", "is_keyword_in_text"],
+      "constants": ["POSITIVE_SURPRISE_KEYWORDS", "NEGATIVE_SURPRISE_KEYWORDS", "FED_KEYWORDS", "CPI_KEYWORDS", "EARNINGS_KEYWORDS", "FED_MEETING_MONTHS", "CPI_RELEASE_DAY_RANGE", "EARNINGS_SEASONS", "FOMC_MEETING_DATES", "_recent_events_cache", "_MAX_CACHE_SIZE", "DEFAULT_TRADE_HISTORY_FILE"],
+      "calls": []
+    },
+    "event_analyzer.py": {
+      "purpose": "Analyzes historical market events by querying stored data and comparing with actual market movements",
+      "classes": [],
+      "functions": ["standardize_ticker", "fetch_market_data", "calculate_price_changes"],
+      "constants": ["CRYPTO_FORMATS"],
+      "calls": ["imports from yfinance", "calls yf.download()"]
+    },
+    "trade_picker.py": {
+      "purpose": "Generates trade ideas based on classified headlines and historical market event patterns",
+      "classes": [],
+      "functions": ["get_next_friday", "fetch_current_price", "fetch_option_data", "select_expiry_date", "select_strike_price", "generate_trade_idea", "process_headlines_for_trades"],
+      "constants": [],
+      "calls": ["imports from yfinance", "calls yf.Ticker()", "calls stock.option_chain()"]
+    },
+    "macro_data_collector.py": {
+      "purpose": "Collects and caches macroeconomic indicators and market data from various sources",
+      "classes": [],
+      "functions": ["get_market_data", "get_fred_data", "load_from_csv", "save_macro_snapshot", "load_macro_snapshot", "get_macro_snapshot", "print_macro_summary", "create_empty_csv_template"],
+      "constants": ["DEFAULT_CACHE_FILE", "DEFAULT_FALLBACK_CSV", "CACHE_EXPIRY_HOURS", "REQUIRED_CSV_FIELDS", "MARKET_TICKERS", "FRED_SERIES", "FRED_METRICS", "FALLBACK_VALUES"],
+      "calls": ["imports from yfinance", "imports from fredapi", "calls fred.get_series_latest_release()"]
+    },
+    "options_data_collector.py": {
+      "purpose": "Fetches real-time options market metrics like implied volatility, put-call ratio, and open interest",
+      "classes": [],
+      "functions": ["get_options_snapshot", "find_closest_strike", "get_iv_for_strike", "get_otm_options", "calculate_put_call_ratio", "calculate_otm_iv"],
+      "constants": ["DEFAULT_EXP_WINDOW", "DEFAULT_OTM_PCT", "CACHE_TIMEOUT", "_options_cache"],
+      "calls": ["imports from yfinance", "calls yf.Ticker()", "calls stock.option_chain()"]
+    },
+    "sentiment_analyzer.py": {
+      "purpose": "Analyzes sentiment in financial texts and compares with historical market performance",
+      "classes": [],
+      "functions": ["compare_sentiment", "add_sentiment_comparison_to_analysis"],
+      "constants": [],
+      "calls": ["imports from datetime, json"]
+    },
+    "persistence.py": {
+      "purpose": "Core persistence module for trade history and trade performance data",
+      "classes": [],
+      "functions": ["save_trade_to_json", "load_trades", "clear_trade_history", "analyze_macro_context", "analyze_options_context", "analyze_technical_indicators", "create_trade_from_classification", "save_classification", "print_trade_summary"],
+      "constants": ["DEFAULT_TRADES_FILE"],
+      "calls": ["imports from macro_data_collector", "imports from options_data_collector", "imports from technical_indicator_collector"]
+    },
+    "trade_persistence.py": {
+      "purpose": "Simplified interface for trade persistence operations",
+      "classes": [],
+      "functions": ["save_trade", "load_existing_trades", "save_trade_data", "ensure_trade_directory"],
+      "constants": ["TRADES_DIR", "DEFAULT_TRADES_FILE"],
+      "calls": ["imports from json, os, datetime"]
+    },
+    "analysis_persistence.py": {
+      "purpose": "Handles saving, retrieving, and managing historical analysis results with cloud storage capabilities",
+      "classes": ["AnalysisPersistence"],
+      "functions": ["save_historical_analysis", "save_similar_events_analysis", "save_query_result", "find_historical_analysis", "find_similar_events_analysis", "load_analysis", "get_statistics", "get_persistence_manager", "enable_cloud_storage"],
+      "constants": ["DEFAULT_ANALYSIS_DIR", "DEFAULT_EVENTS_FILE", "DEFAULT_SIMILAR_EVENTS_FILE", "DEFAULT_INDEX_FILE", "USE_CLOUD_STORAGE", "CLOUD_STORAGE_API_ENDPOINT"],
+      "calls": ["imports from json, os, datetime, requests", "cloud storage API integration (placeholder)"]
+    },
+    "prompt_context_builder.py": {
+      "purpose": "Builds context-rich prompts for LLM queries based on market and event data",
+      "classes": [],
+      "functions": ["build_prompt_context", "generate_time_aware_context", "generate_delta_description", "generate_relevance_weights"],
+      "constants": [],
+      "calls": []
+    },
+    "rss_ingestor.py": {
+      "purpose": "Fetches financial headlines from various RSS feeds",
+      "classes": [],
+      "functions": ["fetch_rss_headlines", "parse_feed", "clean_html"],
+      "constants": ["FEEDS", "MAX_HEADLINES"],
+      "calls": ["imports from feedparser"]
+    },
+    "historical_matcher.py": {
+      "purpose": "Matches current events with similar historical events using AI and free APIs",
+      "classes": [],
+      "functions": ["find_similar_historical_events", "ai_match_events", "match_similar_events", "analyze_market_impact", "standardize_ticker", "fetch_market_data", "calculate_drop_percentage", "load_historical_events", "calculate_match_score"],
+      "constants": ["DEFAULT_TOP_N", "DEFAULT_ANALYSIS_DAYS", "DEFAULT_MARKET_TICKER", "TEMPLATES_FILE", "EVENTS_API_ENDPOINT", "USE_AI_MATCHING"],
+      "calls": ["imports from yfinance", "imports from requests", "potential AI API integration", "potential free financial data API integration"]
+    },
+    "evaluation_runner.py": {
+      "purpose": "Evaluates the performance of trade recommendations after a set period",
+      "classes": [],
+      "functions": ["evaluate_trades", "load_trades", "save_evaluated_trades", "calculate_metrics", "parse_arguments"],
+      "constants": ["DEFAULT_INPUT_FILE", "DEFAULT_OUTPUT_FILE", "DEFAULT_EVALUATION_DAYS"],
+      "calls": ["imports from evaluator"]
+    },
+    "evaluator.py": {
+      "purpose": "Core trade evaluation logic that fetches market data and assesses trade performance",
+      "classes": [],
+      "functions": ["evaluate_trade", "fetch_price_history", "calculate_performance", "calculate_success"],
+      "constants": [],
+      "calls": ["imports from yfinance", "calls yf.download()"]
+    },
+    "technical_indicator_collector.py": {
+      "purpose": "Collects technical indicators like moving averages, RSI, and MACD for given tickers",
+      "classes": [],
+      "functions": ["get_technical_indicators", "calculate_moving_averages", "calculate_rsi", "calculate_macd"],
+      "constants": [],
+      "calls": ["imports from yfinance", "imports from ta", "calls yf.download()"]
+    },
+    "news_monitor.py": {
+      "purpose": "Continuously monitors news sources for new headlines and triggers analysis",
+      "classes": [],
+      "functions": ["start_monitoring", "process_headlines", "send_notification"],
+      "constants": ["POLLING_INTERVAL", "MAX_HEADLINES"],
+      "calls": ["imports from rss_ingestor", "imports from llm_event_classifier", "calls fetch_rss_headlines()"]
+    },
+    "news_snapshot.py": {
+      "purpose": "Creates and manages snapshots of financial news at specific points in time",
+      "classes": [],
+      "functions": ["create_snapshot", "load_snapshot", "compare_snapshots"],
+      "constants": ["DEFAULT_SNAPSHOT_DIR"],
+      "calls": ["imports from rss_ingestor", "calls fetch_rss_headlines()"]
+    },
+    "logger.py": {
+      "purpose": "Provides standardized logging setup for the system",
+      "classes": [],
+      "functions": ["configure_logging", "get_logger", "log_info", "log_warning", "log_error"],
+      "constants": ["LOG_FILE", "LOG_FORMAT", "DATE_FORMAT", "_logging_configured"],
+      "calls": ["imports from logging"]
+    },
+    "view_trades.py": {
+      "purpose": "CLI tool for viewing and analyzing saved trades",
+      "classes": [],
+      "functions": ["view_trades", "view_stats", "format_trade", "parse_args"],
+      "constants": [],
+      "calls": ["imports from persistence", "imports from trade_persistence", "calls load_trades()"]
+    },
+    "view_analysis.py": {
+      "purpose": "CLI tool for viewing and managing saved historical analyses",
+      "classes": [],
+      "functions": ["list_analyses", "show_analysis", "show_query_history", "show_statistics", "export_analyses", "delete_analysis", "reindex", "parse_args", "main"],
+      "constants": [],
+      "calls": ["imports from analysis_persistence", "calls AnalysisPersistence methods"]
+    },
+    ".env": {
+      "purpose": "Environment variables including API keys",
+      "classes": [],
+      "functions": [],
+      "constants": ["OPENAI_API_KEY", "FRED_API_KEY", "CLOUD_STORAGE_API_KEY"],
+      "calls": []
+    },
+    "requirements.txt": {
+      "purpose": "Python dependencies for the project",
+      "classes": [],
+      "functions": [],
+      "constants": [],
+      "calls": []
+    },
+    "README.md": {
+      "purpose": "Documentation for the project including installation and usage instructions",
+      "classes": [],
+      "functions": [],
+      "constants": [],
+      "calls": []
+    },
+    "historical_event_templates.json": {
+      "purpose": "Contains database of historical market events for pattern matching (serves as cache for AI-generated events)",
+      "classes": [],
+      "functions": [],
+      "constants": [],
+      "calls": []
+    },
+    "trade_history.json": {
+      "purpose": "Stores trade recommendations and their data",
+      "classes": [],
+      "functions": [],
+      "constants": [],
+      "calls": []
+    },
+    "evaluated_trades.json": {
+      "purpose": "Stores trades with their performance evaluation results",
+      "classes": [],
+      "functions": [],
+      "constants": [],
+      "calls": []
+    },
+    "macro_data_cache.json": {
+      "purpose": "Caches macroeconomic data to reduce API calls",
+      "classes": [],
+      "functions": [],
+      "constants": [],
+      "calls": []
+    }
+  },
+  "data_flow": [
+    "rss_ingestor.py ➝ llm_event_classifier.py ➝ historical_matcher.py (AI matching) ➝ trade_picker.py ➝ persistence.py/trade_persistence.py",
+    "llm_event_query.py ➝ llm_event_classifier.py ➝ macro_data_collector.py + event_tagger.py + options_data_collector.py ➝ generate_enhanced_trade() ➝ trade output",
+    "llm_event_query.py ➝ historical_matcher.py (AI matching) ➝ find_similar_historical_events() ➝ analyze_similar_events() ➝ analysis_persistence.py (local/cloud storage)",
+    "llm_event_query.py ➝ event_analyzer.py ➝ analyze_historical_event() ➝ generate_event_impact_explanation() ➝ analysis_persistence.py (local/cloud storage)",
+    "llm_event_query.py ➝ sentiment_analyzer.py ➝ add_sentiment_comparison_to_analysis() ➝ analysis_persistence.py (local/cloud storage)",
+    "view_analysis.py ➝ analysis_persistence.py (local/cloud storage) ➝ retrieve and display analysis results",
+    "macro_data_collector.py + options_data_collector.py ➝ event_tagger.py ➝ prompt_context_builder.py",
+    "evaluation_runner.py ➝ evaluator.py ➝ yfinance data ➝ persistence.py"
+  ],
+  "notes": [
+    "Uses OpenAI GPT-3.5/4 for event classification, trade recommendation, and dynamic historical event matching",
+    "Implements AI-based approach for event matching instead of static dictionaries, making the system more scalable",
+    "Integrates with free financial APIs for market data, with fallback mechanisms using cached data when needed",
+    "Uses local caching combined with cloud storage options for hybrid persistence and improved scalability",
+    "Has two parallel persistence systems: trade_persistence/persistence for trade data and analysis_persistence for historical market event analyses",
+    "Consistent handling of cryptocurrency tickers across the system using AI and standardized mappings",
+    "Data flows generally move from raw financial headlines to AI-processed data to trade recommendations",
+    "Analysis results are saved with comprehensive metadata for future reference and pattern detection",
+    "Uses yfinance for market data with built-in fallbacks to free financial data APIs",
+    "Extensive error handling and logging throughout the codebase via logger.py",
+    "Includes trade evaluation and sentiment analysis to measure performance of recommendations over time",
+    "Cloud storage integration makes the system more scalable for large-scale event processing",
+    "Project follows Python best practices with clear separation of concerns between modules"
+  ]
+}
+```

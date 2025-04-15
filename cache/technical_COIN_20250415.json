@@ -1,0 +1,11 @@
+{
+  "rsi": null,
+  "macd_cross": "unknown",
+  "sma_50": null,
+  "sma_200": null,
+  "trend_cross": "unknown",
+  "trend": "unknown",
+  "last_close": null,
+  "_calculation_date": "2025-04-15",
+  "_error": "The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all()."
+}

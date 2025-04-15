@@ -1,0 +1,32 @@
+[
+  {
+    "title": "Trump administration says it lacks authority to get Abrego Garcia back from El Salvador",
+    "link": "https://www.cnbc.com/2025/04/14/abrego-garcia-el-salvador-trump-nayib-bukele.html",
+    "published": "2025-04-14T23:08:19Z",
+    "source": "CNBC Markets",
+    "summary": "A federal judge has ordered the Trump administration to provide daily updates on efforts to recover Kilmar Abrego Garcia from an El Salvador prison.",
+    "event_type": "Geopolitical",
+    "sentiment": "Neutral",
+    "sector": "General"
+  },
+  {
+    "title": "S&P 500 death cross, recession fears, dollar's moves: Market recap",
+    "link": "https://finance.yahoo.com/video/p-500-death-cross-recession-220625971.html?.tsrc=rss",
+    "published": "2025-04-14T22:06:25Z",
+    "source": "Yahoo Finance",
+    "summary": "There are a lot of threads you may have missed in the trading day, including the S&amp;P 500 (GSPC) death cross and the decline in the US dollar (DX-Y.NYB). Yahoo Finance Markets and Data Editor Jared Blikre shares his takeaways from the trading day in the video above. To watch more expert insights and analysis on the latest market action, check out more Asking for a Trend here.",
+    "event_type": "Economic Growth",
+    "sentiment": "Bearish",
+    "sector": "Financials"
+  },
+  {
+    "title": "Harvard University rejects Trump DEI demands, imperiling $9 billion in federal funding",
+    "link": "https://www.cnbc.com/2025/04/14/trump-harvard-deal-funding-billion-dei.html",
+    "published": "2025-04-14T22:05:54Z",
+    "source": "CNBC Markets",
+    "summary": "The Trump administration has zeroed in on colleges in a crackdown on diversity, equity and inclusion programs in the United States.",
+    "event_type": "Regulation",
+    "sentiment": "Bearish",
+    "sector": "Education"
+  }
+]
