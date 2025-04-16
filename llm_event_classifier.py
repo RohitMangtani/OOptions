@@ -26,7 +26,11 @@ try:
         for line in env_contents.splitlines():
             if line.startswith('OPENAI_API_KEY='):
                 OPENAI_API_KEY = line.split('=', 1)[1]
-                print(f"✅ OpenAI API key loaded directly from .env file: {OPENAI_API_KEY[:4]}...{OPENAI_API_KEY[-4:]}")
+                if OPENAI_API_KEY and len(OPENAI_API_KEY) > 20:  # Simple validation for key length
+                    print(f"✅ OpenAI API key loaded directly from .env file: {OPENAI_API_KEY[:4]}...{OPENAI_API_KEY[-4:]}")
+                else:
+                    print("⚠️ WARNING: OpenAI API key found but appears to be invalid")
+                    OPENAI_API_KEY = None
                 break
         else:
             OPENAI_API_KEY = None
@@ -38,12 +42,14 @@ except Exception as e:
 # Fallback to environment variable if direct read failed
 if not OPENAI_API_KEY:
     API_KEY_FROM_ENV = os.getenv('OPENAI_API_KEY')
-    if API_KEY_FROM_ENV:
+    if API_KEY_FROM_ENV and len(API_KEY_FROM_ENV) > 20:  # Simple validation
         OPENAI_API_KEY = API_KEY_FROM_ENV
         print(f"✅ OpenAI API key loaded from environment variable: {OPENAI_API_KEY[:4]}...{OPENAI_API_KEY[-4:]}")
     else:
-        print("❌ ERROR: OpenAI API key not found in environment")
-        print("Please add your OpenAI API key to the .env file with the variable name OPENAI_API_KEY")
+        print("❌ ERROR: OpenAI API key not found in environment or appears invalid")
+        print("⚠️ The application will continue but some features may be limited")
+        # We'll set this to continue but API calls will fail
+        OPENAI_API_KEY = "temporarily_unavailable"
 
 DEFAULT_MODEL = os.getenv('OPENAI_MODEL', "gpt-3.5-turbo")
 

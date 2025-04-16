@@ -34,78 +34,92 @@ Read file: Context.txt
       "rss_ingestor": {
         "purpose": "Fetches financial headlines from various RSS feeds",
         "feeds": ["Yahoo Finance", "CNBC", "Reuters", "Financial Times", "Bloomberg"],
-        "output": "List of headline dictionaries with title, source, published date"
+        "output": "List of headline dictionaries with title, source, published date",
+        "code_content": "Contains functions for parsing RSS feeds and extracting headline data."
       },
       "macro_data_collector": {
         "purpose": "Collects and caches macroeconomic indicators",
         "data_sources": ["FRED API", "Yahoo Finance", "CSV fallback"],
         "indicators": ["CPI", "Fed Funds Rate", "Unemployment", "Treasury Yields"],
-        "output": "Dictionary of macro indicators with values and timestamps"
+        "output": "Dictionary of macro indicators with values and timestamps",
+        "code_content": "Includes API integration for data retrieval and caching mechanisms."
       },
       "options_data_collector": {
         "purpose": "Fetches options market metrics",
         "metrics": ["IV", "Put/Call Ratio", "Open Interest", "ATM/OTM values"],
-        "output": "Options snapshot dictionary for a given ticker"
+        "output": "Options snapshot dictionary for a given ticker",
+        "code_content": "Implements data fetching and processing for options metrics."
       },
       "technical_indicator_collector": {
         "purpose": "Calculates technical indicators for stocks",
         "indicators": ["RSI", "MACD", "Moving Averages"],
-        "output": "Technical indicator dictionary for a given ticker"
+        "output": "Technical indicator dictionary for a given ticker",
+        "code_content": "Contains algorithms for calculating various technical indicators."
       }
     },
     "analysis": {
       "llm_event_classifier": {
         "purpose": "Classifies financial headlines by type, sentiment, sector",
         "implementation": ["OpenAIClassifier", "DummyClassifier (fallback)"],
-        "output": "Classification dictionary with event_type, sentiment, sector, trade recommendation"
+        "output": "Classification dictionary with event_type, sentiment, sector, trade recommendation",
+        "code_content": "Utilizes machine learning models for classification tasks."
       },
       "event_tagger": {
         "purpose": "Adds contextual tags to financial events",
         "tags": ["surprise_positive", "is_fed_week", "is_cpi_week", "is_earnings_season", "is_repeat_event"],
-        "output": "Dictionary of boolean event tags"
+        "output": "Dictionary of boolean event tags",
+        "code_content": "Applies rules and logic for tagging events with context."
       },
       "prompt_context_builder": {
         "purpose": "Enriches prompts with economic context",
         "enhancements": ["time_aware_context", "delta_description", "relevance_weights"],
-        "output": "Enhanced prompt context dictionary"
+        "output": "Enhanced prompt context dictionary",
+        "code_content": "Generates enriched prompts using contextual data."
       },
       "historical_matcher": {
         "purpose": "Matches events to historical patterns",
         "matching_mechanism": "Semantic similarity with templates",
-        "output": "List of similar historical events with match scores"
+        "output": "List of similar historical events with match scores",
+        "code_content": "Implements pattern matching algorithms for historical data."
       },
       "sentiment_analyzer": {
         "purpose": "Analyzes sentiment in financial texts",
-        "output": "Sentiment metrics and historical comparisons"
+        "output": "Sentiment metrics and historical comparisons",
+        "code_content": "Performs sentiment analysis using text processing techniques."
       }
     },
     "recommendation": {
       "trade_picker": {
         "purpose": "Generates trade ideas based on event analysis",
-        "output": "Trade recommendation with ticker, option_type, strike, expiry, rationale"
+        "output": "Trade recommendation with ticker, option_type, strike, expiry, rationale",
+        "code_content": "Generates trade recommendations using analysis results."
       },
       "llm_event_query": {
         "purpose": "Main entry point for user queries",
         "features": ["Natural language parsing", "Historical event matching", "Trade generation"],
-        "output": "Complete analysis with market impact and trade recommendation"
+        "output": "Complete analysis with market impact and trade recommendation",
+        "code_content": "Handles user queries and integrates various analysis components. Key functionalities include natural language processing, data integration, trade idea generation, error handling, crypto and ticker standardization, historical data analysis, interactive and continuous modes, and session management."
       }
     },
     "persistence": {
       "trade_persistence": {
         "purpose": "Stores trade recommendations",
         "storage": "trade_history.json file",
-        "schema": "JSON with headline, similar_events, trade_idea, metadata"
+        "schema": "JSON with headline, similar_events, trade_idea, metadata",
+        "code_content": "Manages storage and retrieval of trade data."
       },
       "analysis_persistence": {
         "purpose": "Stores historical analyses",
         "storage": "analysis_history/ directory structure",
         "components": ["events/", "similar_events/", "queries/", "analysis_index.json"],
-        "cloud_integration": "Optional via CLOUD_STORAGE_API_KEY"
+        "cloud_integration": "Optional via CLOUD_STORAGE_API_KEY",
+        "code_content": "Handles storage of analysis data and supports cloud integration."
       },
       "evaluation": {
         "purpose": "Evaluates trade performance",
         "storage": "evaluated_trades.json",
-        "metrics": ["actual_return", "max_profit", "success_rate"]
+        "metrics": ["actual_return", "max_profit", "success_rate"],
+        "code_content": "Evaluates trade outcomes and records performance metrics."
       }
     }
   },
@@ -289,7 +303,9 @@ Read file: Context.txt
     "FOCUS EXCLUSIVELY ON IMPLEMENTING THE SPECIFIC REQUESTED CHANGES WITHOUT SCOPE CREEP",
     "PRESERVE ALL TERMINAL STYLING WITH THE NEW COLOR SCHEME AND DESIGN ELEMENTS",
     "THE NEWS TERMINAL AND EXISTING TABS MUST ALWAYS REMAIN FUNCTIONAL AND UNCHANGED UNLESS EXPLICITLY REQUESTED",
-    "STRICTLY ADHERE TO THE UPDATED COLOR SCHEME: DARK GRAY BACKGROUND, GREEN ACCENTS, WHITE TEXT, ROUNDED CORNERS"
+    "STRICTLY ADHERE TO THE UPDATED COLOR SCHEME: DARK GRAY BACKGROUND, GREEN ACCENTS, WHITE TEXT, ROUNDED CORNERS",
+    "NEVER USE DUMMY VARIABLES OR FALLBACKS INSTEAD OF ACTUAL API SERVICES",
+    "ALWAYS USE THE PROVIDED API KEYS - NEVER SUBSTITUTE WITH PLACEHOLDERS OR DUMMY IMPLEMENTATIONS"
   ]
 }
 ```

@@ -1500,29 +1500,37 @@ def call_openai_with_retry(model, messages, temperature=0.3, response_format=Non
             if response_format:
                 kwargs["response_format"] = response_format
                 
-            return openai.chat.completions.create(**kwargs)
-            
-        except openai.RateLimitError as e:
-            wait_time = min(2 ** attempts * RETRY_DELAY_SECONDS, 60)  # Exponential backoff
-            print(ERROR_MESSAGES["openai_rate_limit"].format(wait_time))
-            time.sleep(wait_time)
-            last_error = e
-            
-        except openai.AuthenticationError:
-            print(ERROR_MESSAGES["openai_auth"])
-            return None  # Auth errors won't be fixed by retrying
-            
-        except (openai.APIConnectionError, requests.exceptions.ConnectionError):
-            attempts += 1
-            print(ERROR_MESSAGES["openai_connection"].format(attempts, max_retries))
-            time.sleep(RETRY_DELAY_SECONDS)
-            last_error = "Connection error"
+            # Check which API version we're using
+            if hasattr(openai, 'ChatCompletion'):
+                # Using older OpenAI library (v0.28.0)
+                return openai.ChatCompletion.create(**kwargs)
+            else:
+                # Using newer OpenAI library
+                return openai.chat.completions.create(**kwargs)
             
         except Exception as e:
-            attempts += 1
-            print(ERROR_MESSAGES["openai_general"].format(str(e)))
-            time.sleep(RETRY_DELAY_SECONDS)
-            last_error = e
+            # Handle rate limiting
+            if str(e).find('rate limit') >= 0:
+                wait_time = min(2 ** attempts * RETRY_DELAY_SECONDS, 60)  # Exponential backoff
+                print(ERROR_MESSAGES["openai_rate_limit"].format(wait_time))
+                time.sleep(wait_time)
+                last_error = e
+            # Handle authentication errors
+            elif str(e).find('authentication') >= 0 or str(e).find('API key') >= 0:
+                print(ERROR_MESSAGES["openai_auth"])
+                return None  # Auth errors won't be fixed by retrying
+            # Handle connection errors
+            elif str(e).find('connection') >= 0:
+                attempts += 1
+                print(ERROR_MESSAGES["openai_connection"].format(attempts, max_retries))
+                time.sleep(RETRY_DELAY_SECONDS)
+                last_error = "Connection error"
+            # Handle other errors
+            else:
+                attempts += 1
+                print(ERROR_MESSAGES["openai_general"].format(str(e)))
+                time.sleep(RETRY_DELAY_SECONDS)
+                last_error = e
             
         # Increment attempts for rate limit errors too
         attempts += 1
