@@ -45,10 +45,8 @@ def test_api_key():
     # Print part of the key for verification
     print(f"\nAPI key loaded from environment: {api_key[:4]}...{api_key[-4:]}")
     
-    # Manually set the API key
-    correct_api_key = "your_openai_api_key_here"
-    print(f"\nSetting API key manually: {correct_api_key[:4]}...{correct_api_key[-4:]}" if len(correct_api_key) > 8 else f"\nSetting API key manually: {correct_api_key}")
-    openai.api_key = correct_api_key
+    # Use the API key from environment
+    openai.api_key = api_key
     
     # Try to make a simple API call
     try:
@@ -62,31 +60,6 @@ def test_api_key():
             max_tokens=20
         )
         print(f"✅ API call successful: {response.choices[0].message.content}")
-        
-        # Fix the .env file if needed
-        if api_key != correct_api_key:
-            print("\nUpdating .env file with correct API key...")
-            try:
-                with open(env_path, 'r') as f:
-                    env_contents = f.read()
-                
-                # Replace the API key line
-                updated_contents = []
-                for line in env_contents.splitlines():
-                    if line.startswith('OPENAI_API_KEY='):
-                        updated_line = f'OPENAI_API_KEY={correct_api_key}'
-                        updated_contents.append(updated_line)
-                    else:
-                        updated_contents.append(line)
-                
-                # Write back the updated file
-                with open(env_path, 'w') as f:
-                    f.write('\n'.join(updated_contents))
-                
-                print("✅ .env file updated successfully")
-            except Exception as e:
-                print(f"❌ Error updating .env file: {str(e)}")
-        
         return True
     except Exception as e:
         print(f"❌ API call failed: {str(e)}")

@@ -25,6 +25,8 @@ import re
 import time
 import random
 import datetime
+import uuid
+import html
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from macro_data_collector import get_macro_snapshot, get_fred_data, FRED_METRICS, FALLBACK_VALUES
@@ -34,47 +36,97 @@ from llm_event_classifier import classify_macro_event
 from trade_picker import generate_trade_idea
 from event_analyzer import standardize_ticker, fetch_market_data, calculate_price_changes
 from historical_matcher import find_similar_historical_events, DEFAULT_MARKET_TICKER
-import pandas as pd
-import requests
-from fredapi import Fred
-import logging
-import argparse
-import uuid
-
-# Import custom modules
-from sentiment_analyzer import add_sentiment_comparison_to_analysis, compare_sentiment
-import analysis_persistence as ap
 from rss_ingestor import fetch_rss_headlines
-import html
+
+# Try to import streamlit for secrets management
+try:
+    import streamlit as st
+    STREAMLIT_AVAILABLE = True
+except ImportError:
+    STREAMLIT_AVAILABLE = False
+
+def get_api_key(key_name, fallback_keys=None):
+    """
+    Get API key from multiple possible sources with fallbacks.
+    
+    Args:
+        key_name: Name of the API key (e.g., 'OPENAI_API_KEY')
+        fallback_keys: List of alternative keys to try if primary key isn't found
+    
+    Returns:
+        API key string or None if not found
+    """
+    api_key = None
+    
+    # Try Streamlit secrets first if available
+    if STREAMLIT_AVAILABLE:
+        try:
+            if key_name in st.secrets:
+                api_key = st.secrets[key_name]
+                print(f"✅ {key_name} loaded from Streamlit secrets")
+                return api_key
+            # Check if key is nested in a section
+            for section in st.secrets:
+                if isinstance(st.secrets[section], dict) and key_name in st.secrets[section]:
+                    api_key = st.secrets[section][key_name]
+                    print(f"✅ {key_name} loaded from Streamlit secrets section: {section}")
+                    return api_key
+        except Exception as e:
+            print(f"⚠️ Error accessing Streamlit secrets: {str(e)}")
+    
+    # Try environment variables next
+    api_key = os.getenv(key_name)
+    if api_key:
+        print(f"✅ {key_name} loaded from environment variable")
+        return api_key
+    
+    # Try .env file next
+    try:
+        with open('.env', 'r') as f:
+            env_contents = f.read()
+            for line in env_contents.splitlines():
+                if line.startswith(f'{key_name}='):
+                    api_key = line.split('=', 1)[1].strip()
+                    print(f"✅ {key_name} loaded from .env file")
+                    return api_key
+    except Exception as e:
+        print(f"⚠️ Error reading .env file: {str(e)}")
+    
+    # Try fallback keys if provided
+    if fallback_keys:
+        for fallback_key in fallback_keys:
+            fallback_value = os.getenv(fallback_key)
+            if fallback_value:
+                print(f"✅ Using fallback key {fallback_key}")
+                return fallback_value
+            
+            # Also try fallbacks in .env
+            try:
+                with open('.env', 'r') as f:
+                    env_contents = f.read()
+                    for line in env_contents.splitlines():
+                        if line.startswith(f'{fallback_key}='):
+                            api_key = line.split('=', 1)[1].strip()
+                            print(f"✅ Using fallback key {fallback_key} from .env file")
+                            return api_key
+            except Exception:
+                pass
+    
+    print(f"❌ {key_name} not found in any configuration source")
+    return None
 
 # Load environment variables
 load_dotenv()
 
-# Get API keys from environment
-# Read API key directly from .env file to ensure we get the current value
-try:
-    with open('.env', 'r') as f:
-        env_contents = f.read()
-        for line in env_contents.splitlines():
-            if line.startswith('OPENAI_API_KEY='):
-                OPENAI_API_KEY = line.split('=', 1)[1]
-                print(f"✅ OpenAI API key loaded directly from .env file: {OPENAI_API_KEY[:4]}...{OPENAI_API_KEY[-4:]}")
-                break
-        else:
-            OPENAI_API_KEY = None
-            print("❌ ERROR: OPENAI_API_KEY not found in .env file")
-except Exception as e:
-    print(f"❌ ERROR reading .env file: {str(e)}")
-    OPENAI_API_KEY = None
-
-# Fallback to environment variable if direct read failed
-if not OPENAI_API_KEY:
-    OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
-    if OPENAI_API_KEY:
-        print(f"✅ OpenAI API key loaded from environment variable: {OPENAI_API_KEY[:4]}...{OPENAI_API_KEY[-4:]}")
-    else:
-        print("❌ ERROR: OpenAI API key not found in environment")
-        print("Please add your OpenAI API key to the .env file with the variable name OPENAI_API_KEY")
+# Get API keys using the new function with fallbacks
+OPENAI_API_KEY = get_api_key('OPENAI_API_KEY', ['OPENAI_KEY', 'TOMI_OPENAI_KEY'])
+if OPENAI_API_KEY:
+    # Mask the key for security in logs
+    masked_key = f"{OPENAI_API_KEY[:4]}...{OPENAI_API_KEY[-4:]}" if len(OPENAI_API_KEY) > 8 else "***"
+    print(f"✅ OpenAI API key loaded: {masked_key}")
+else:
+    print("❌ ERROR: OpenAI API key not found in any configuration source")
+    print("Please add your OpenAI API key to Streamlit secrets, environment variables, or the .env file")
 
 # Set the API key for the openai module
 openai.api_key = OPENAI_API_KEY
@@ -83,8 +135,17 @@ openai.api_key = OPENAI_API_KEY
 DEFAULT_MODEL = os.getenv('OPENAI_MODEL', "gpt-3.5-turbo")
 
 # Initialize FRED API if available
-FRED_API_KEY = os.getenv('FRED_API_KEY')
-fred = Fred(api_key=FRED_API_KEY) if FRED_API_KEY else None
+FRED_API_KEY = get_api_key('FRED_API_KEY', ['TOMI_FRED_API_KEY'])
+fred = None
+if FRED_API_KEY:
+    try:
+        from fredapi import Fred
+        fred = Fred(api_key=FRED_API_KEY)
+        print(f"✅ FRED API initialized successfully")
+    except Exception as e:
+        print(f"❌ Error initializing FRED API: {str(e)}")
+else:
+    print("⚠️ FRED API key not found. Some economic data features will be unavailable.")
 
 # API retry configuration
 MAX_RETRIES = 3
@@ -659,8 +720,8 @@ def get_historical_macro_data(target_date: str) -> dict:
     Returns:
         dict: Historical macroeconomic indicators
     """
-    if not fred or not FRED_API_KEY:
-        print(f"Warning: FRED API key not available. Using fallback values for historical macro data.")
+    if not fred:
+        print(f"Warning: FRED API not available. Using fallback values for historical macro data.")
         return {k: v for k, v in FALLBACK_VALUES.items()}
     
     try:
@@ -1474,24 +1535,28 @@ def generate_macro_insights(correlations: dict, macro_data_points: list) -> list
 
 def call_openai_with_retry(model, messages, temperature=0.3, response_format=None, max_retries=MAX_RETRIES):
     """
-    Call OpenAI API with retry mechanism for common errors.
+    Call the OpenAI API with retry logic for rate limits and temporary errors.
     
     Args:
         model: OpenAI model to use
         messages: List of message dictionaries
-        temperature: Temperature setting for generation
-        response_format: Optional response format (e.g., JSON)
+        temperature: Temperature parameter (0-1)
+        response_format: Optional response format specifier
         max_retries: Maximum number of retry attempts
         
     Returns:
-        OpenAI response object or None if failed
+        OpenAI API response or None if all retries fail
     """
+    global OPENAI_API_KEY, openai
     attempts = 0
     last_error = None
     
+    # List of backup key names to try if the primary one fails
+    backup_key_names = ['OPENAI_KEY', 'TOMI_OPENAI_KEY', 'OPENAI_API_KEY']
+    tried_keys = set()  # Keep track of keys we've already tried
+    
     while attempts < max_retries:
         try:
-            # Prepare kwargs based on whether response_format is provided
             kwargs = {
                 "model": model,
                 "messages": messages,
@@ -1500,13 +1565,8 @@ def call_openai_with_retry(model, messages, temperature=0.3, response_format=Non
             if response_format:
                 kwargs["response_format"] = response_format
                 
-            # Check which API version we're using
-            if hasattr(openai, 'ChatCompletion'):
-                # Using older OpenAI library (v0.28.0)
-                return openai.ChatCompletion.create(**kwargs)
-            else:
-                # Using newer OpenAI library
-                return openai.chat.completions.create(**kwargs)
+            # Use the new OpenAI library API format (v1.0.0+)
+            return openai.chat.completions.create(**kwargs)
             
         except Exception as e:
             # Handle rate limiting
@@ -1518,7 +1578,23 @@ def call_openai_with_retry(model, messages, temperature=0.3, response_format=Non
             # Handle authentication errors
             elif str(e).find('authentication') >= 0 or str(e).find('API key') >= 0:
                 print(ERROR_MESSAGES["openai_auth"])
-                return None  # Auth errors won't be fixed by retrying
+                
+                # Try alternative API keys
+                tried_keys.add(OPENAI_API_KEY)  # Mark current key as tried
+                for key_name in backup_key_names:
+                    print(f"Trying alternative API key: {key_name}")
+                    alternative_key = get_api_key(key_name)
+                    if alternative_key and alternative_key not in tried_keys:
+                        OPENAI_API_KEY = alternative_key
+                        openai.api_key = OPENAI_API_KEY
+                        print(f"✅ Switched to alternative API key: {OPENAI_API_KEY[:4]}...{OPENAI_API_KEY[-4:]}" if len(OPENAI_API_KEY) > 8 else "✅ Switched to alternative API key")
+                        break
+                else:
+                    print("❌ No alternative API keys available")
+                    return None  # No valid keys found
+                
+                # Don't increment attempts for key switch
+                continue
             # Handle connection errors
             elif str(e).find('connection') >= 0:
                 attempts += 1
@@ -1889,8 +1965,21 @@ def process_query(user_input: str, session_id=None, is_follow_up=None, model=Non
         tuple: (response, session_id) - response is the analysis result,
                session_id can be used for follow-up questions
     """
+    # Declare global variables
+    global OPENAI_API_KEY, openai
+    
     # Use the provided model or fall back to DEFAULT_MODEL
     model_to_use = model or DEFAULT_MODEL
+    
+    # Check if we have a valid API key
+    if not OPENAI_API_KEY:
+        # Try one more time to get the API key from all sources
+        OPENAI_API_KEY = get_api_key('OPENAI_API_KEY', ['OPENAI_KEY', 'TOMI_OPENAI_KEY'])
+        if OPENAI_API_KEY:
+            openai.api_key = OPENAI_API_KEY
+            print(f"✅ API key loaded on demand: {OPENAI_API_KEY[:4]}...{OPENAI_API_KEY[-4:]}" if len(OPENAI_API_KEY) > 8 else "✅ API key loaded on demand")
+        else:
+            return "API key not available. Please add your OpenAI API key to Streamlit secrets or environment variables.", session_id if session_id else create_new_session()
     
     try:
         # Clean up old sessions periodically

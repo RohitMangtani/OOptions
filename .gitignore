@@ -1,5 +1,11 @@
 # Environment variables
 .env
+.env.*
+!.env.example
+.streamlit/secrets.toml
+**/secrets.toml
+*.pem
+*.key
 
 # Python cache files
 __pycache__/
@@ -26,6 +32,8 @@ news_data/
 
 # Logs
 *.log
+**/*.log
+**/*.cache
 
 # Visual Studio Code
 .vscode/

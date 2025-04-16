@@ -132,6 +132,30 @@ The project requires an OpenAI API key to function properly. To set up your API 
    OPENAI_API_KEY=your_api_key_here
    ```
 
+### Using Streamlit Secrets for Cloud Deployment
+
+When deploying to Streamlit Cloud, you should use Streamlit's secrets management system instead of `.env` files:
+
+1. Create a `.streamlit/secrets.toml` file for local testing (this file is gitignored)
+2. Format your secrets as shown in `.streamlit/secrets.toml.example`:
+   ```toml
+   # OpenAI API Key (required)
+   OPENAI_API_KEY = "your-openai-api-key-here"
+   
+   # Alternative OpenAI API Key (optional backup)
+   TOMI_OPENAI_KEY = "your-tomi-openai-key-here"
+   
+   # FRED API Key (for economic data)
+   FRED_API_KEY = "your-fred-api-key-here"
+   ```
+3. Add these same secrets in the Streamlit Cloud dashboard under "Secrets" when deploying
+
+The application will automatically check for keys in this order:
+1. Streamlit secrets (when running in Streamlit)
+2. Environment variables
+3. Local `.env` file
+4. Alternative/fallback keys
+
 ### Security Considerations
 
 - The `.env` file is excluded from version control via `.gitignore` to prevent accidental exposure of your API key

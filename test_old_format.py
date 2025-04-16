@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 """
-Test OpenAI API Key with older library format
+Test OpenAI API Key with modern library format
 ============================================
 
 This script tests if the OpenAI API key is correctly loaded from the .env file
-and can successfully make a simple API call using the older format from openai v0.28.0.
+and can successfully make a simple API call using the format from openai v1.0.0+.
 """
 
 import os
@@ -29,22 +29,22 @@ with open('.env', 'r') as f:
 # Set the API key directly
 openai.api_key = api_key
 
-# Try to make a simple API call using the older format (openai v0.28.0)
+# Try to make a completion API call using the new format (openai v1.0.0+)
 try:
-    print("\nMaking a test API call with openai v0.28.0 format...")
-    response = openai.Completion.create(
-        engine="text-davinci-003",
+    print("\nMaking a test API call with openai v1.0.0+ format...")
+    response = openai.completions.create(
+        model="gpt-3.5-turbo-instruct",
         prompt="Say 'API test successful'",
         max_tokens=20
     )
-    print(f"✅ API call successful: {response.choices[0].text.strip()}")
+    print(f"✅ Completion API call successful: {response.choices[0].text.strip()}")
 except Exception as e:
-    print(f"❌ API call failed: {str(e)}")
+    print(f"❌ Completion API call failed: {str(e)}")
 
-# Try with ChatCompletion as alternative
+# Try with Chat Completion using the new format
 try:
-    print("\nTrying alternative method with ChatCompletion...")
-    response = openai.ChatCompletion.create(
+    print("\nTrying Chat Completion with new API format...")
+    response = openai.chat.completions.create(
         model="gpt-3.5-turbo",
         messages=[
             {"role": "system", "content": "You are a helpful assistant."},
@@ -52,6 +52,6 @@ try:
         ],
         max_tokens=20
     )
-    print(f"✅ API call successful: {response.choices[0].message['content']}")
+    print(f"✅ Chat API call successful: {response.choices[0].message.content}")
 except Exception as e:
-    print(f"❌ API call failed: {str(e)}") 
+    print(f"❌ Chat API call failed: {str(e)}") 
