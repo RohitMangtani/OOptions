@@ -4,6 +4,7 @@ from typing import List, Dict, Any
 import pytz
 import time
 import re
+from functools import lru_cache
 
 # Define financial news RSS feed URLs
 FINANCIAL_FEEDS = [
@@ -14,6 +15,14 @@ FINANCIAL_FEEDS = [
     # Bloomberg added via a common RSS aggregator that provides their content
     {"url": "https://feedly.com/f/alert/rss/0c53d59a-2e5e-4daa-8a35-f3c77cf1d1f3", "source": "Bloomberg (via Feedly)"},
 ]
+
+@lru_cache(maxsize=100)
+def parse_timestamp(timestamp_str: str, fmt: str) -> datetime:
+    """
+    Parse a timestamp string using a given format.
+    This function is cached to improve performance for common timestamp formats.
+    """
+    return datetime.strptime(timestamp_str, fmt)
 
 def standardize_timestamp(timestamp_str: str) -> str:
     """Convert various timestamp formats to UTC ISO format."""
@@ -34,10 +43,10 @@ def standardize_timestamp(timestamp_str: str) -> str:
     
     dt = None
     
-    # Try each format
+    # Try each format using the cached parser
     for fmt in formats:
         try:
-            dt = datetime.strptime(timestamp_str, fmt)
+            dt = parse_timestamp(timestamp_str, fmt)
             break
         except ValueError:
             continue
@@ -54,7 +63,7 @@ def standardize_timestamp(timestamp_str: str) -> str:
                 
                 for fmt in formats:
                     try:
-                        dt = datetime.strptime(clean_str, fmt)
+                        dt = parse_timestamp(clean_str, fmt)
                         # Apply the GMT offset
                         offset = hours * 3600 + (minutes * 60 if hours >= 0 else -minutes * 60)
                         dt = dt.replace(tzinfo=pytz.FixedOffset(offset // 60))
@@ -78,6 +87,12 @@ def standardize_timestamp(timestamp_str: str) -> str:
     # Return in ISO format
     return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
+# Cache frequently fetched feeds to reduce network requests
+@lru_cache(maxsize=10)
+def get_cached_feed(url: str) -> dict:
+    """Cache feed parsing results to reduce redundant network requests"""
+    return feedparser.parse(url)
+
 def fetch_rss_headlines() -> List[Dict[str, Any]]:
     """
     Fetch headlines from financial RSS feeds.
@@ -93,8 +108,8 @@ def fetch_rss_headlines() -> List[Dict[str, Any]]:
     
     for feed_info in FINANCIAL_FEEDS:
         try:
-            # Parse the feed
-            feed = feedparser.parse(feed_info["url"])
+            # Parse the feed using the cached function
+            feed = get_cached_feed(feed_info["url"])
             
             # Process each entry in the feed
             for entry in feed.entries:

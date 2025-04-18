@@ -16,6 +16,10 @@ import base64
 import io
 import matplotlib.pyplot as plt
 import numpy as np
+import openai
+from functools import lru_cache
+import re
+import yfinance as yf
 
 # Set page configuration
 st.set_page_config(
@@ -1311,10 +1315,91 @@ st.markdown(
         background-color: #00aa00;
         color: #000000;
     }
+
+    /* NEW: Component Equation Builder */
+    .equation-container {
+        margin-bottom: 20px;
+        background-color: #1a1a1a;
+        border-radius: 5px;
+        padding: 15px;
+    }
+    .equation-title {
+        color: #00ff00;
+        font-weight: bold;
+        margin-bottom: 10px;
+        font-size: 16px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    .equation-row {
+        display: flex;
+        align-items: flex-start;
+        margin-bottom: 12px;
+    }
+    .equation-symbol {
+        font-size: 24px;
+        margin: 0 15px;
+        color: #00ff00;
+        font-weight: bold;
+    }
+    .equation-value {
+        background-color: #222;
+        padding: 10px;
+        border-radius: 4px;
+        color: #ffffff;
+        flex-grow: 1;
+        border-left: 3px solid;
+        font-family: 'Courier New', monospace;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-height: 200px;
+        overflow-y: auto;
+    }
+    .equation-label {
+        width: 170px;
+        text-align: right;
+        padding-right: 10px;
+        font-weight: bold;
+        color: #cccccc;
+        text-transform: uppercase;
+        font-size: 14px;
+        letter-spacing: 0.5px;
+    }
+    .result-box {
+        background-color: #222;
+        padding: 15px;
+        border-radius: 4px;
+        border-left: 3px solid #00ff00;
+        margin-top: 20px;
+        text-align: center;
+    }
+    .tag-pill {
+        display: inline-block;
+        padding: 2px 8px;
+        background-color: #333;
+        border-radius: 10px;
+        margin: 2px;
+        font-size: 12px;
+        color: white;
+    }
+    .data-preview {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px;
+    }
+    .data-item {
+        background-color: #333;
+        padding: 8px;
+        border-radius: 4px;
+        margin-bottom: 5px;
+    }
 </style>
 """,
     unsafe_allow_html=True,
 )
+
+# Constants
+OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY', '')
 
 # Check for the presence of the OpenAI API key
 # Read API key directly from .env file to ensure we get the current value
@@ -2067,643 +2152,1529 @@ def display_news_feed():
     )
 
 
-# Function to display the query dashboard tab
 def display_query_dashboard():
-    """Display a query dashboard tab with visualizations of the query system's inner workings."""
-    # Display terminal header
-    st.markdown('<div class="terminal-header"><span class="terminal-title">QUERY DASHBOARD</span></div>', unsafe_allow_html=True)
+    st.header("Query Dashboard")
     
-    # Check if we have conversation history
-    if "conversation" not in st.session_state or len(st.session_state.conversation) == 0:
-        st.markdown('<div class="dashboard-content">No query history available. Please submit a market query first.</div>', unsafe_allow_html=True)
+    if "conversation" not in st.session_state or not st.session_state.conversation:
+        st.warning("No queries have been made yet. Try asking a question in the chat tab.")
         return
     
-    # Initialize session state for selected query if not exists
-    if "selected_query_idx" not in st.session_state:
-        st.session_state.selected_query_idx = 0
+    # Get the latest user query and assistant response
+    latest_query = None
+    latest_response = None
     
-    # Extract user queries from conversation
-    user_queries = []
-    for i, message in enumerate(st.session_state.conversation):
-        if message["role"] == "user":
-            user_queries.append((i, message["content"]))
+    for message in reversed(st.session_state.conversation):
+        if message["role"] == "user" and latest_query is None:
+            latest_query = message["content"]
+        elif message["role"] == "assistant" and latest_response is None:
+            latest_response = message["content"]
+        
+        if latest_query and latest_response:
+            break
     
-    if not user_queries:
-        st.markdown('<div class="dashboard-content">No user queries found in conversation history.</div>', unsafe_allow_html=True)
+    if not latest_query:
+        st.warning("No user query found in conversation history.")
         return
     
-    # Create a column layout for the controls
-    col1, col2 = st.columns([3, 1])
+    # Query metadata
+    query_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    query_length = len(latest_query)
     
-    # Query selector dropdown
-    with col1:
-        selected_idx = st.selectbox(
-            "Select Query to Analyze",
-            range(len(user_queries)),
-            format_func=lambda i: f"Query {i+1}: {user_queries[i][1][:50]}{'...' if len(user_queries[i][1]) > 50 else ''}",
-            index=st.session_state.selected_query_idx,
-            key="query_selector"
-        )
-        st.session_state.selected_query_idx = selected_idx
+    # Enhanced preprocessing with LLM-based entity extraction
+    try:
+        extracted_entities = extract_entities_llm(latest_query)
+    except Exception as e:
+        st.error(f"Error in LLM entity extraction: {str(e)}")
+        # Fallback to rule-based extraction
+        extracted_entities = {
+            "companies": re.findall(r'\b[A-Z][A-Za-z]*\b', latest_query),
+            "tickers": re.findall(r'\$[A-Z]+|\b[A-Z]{1,5}\b', latest_query),
+            "sectors": ["Technology"] if "tech" in latest_query.lower() else [],
+            "time_periods": re.findall(r'\b\d+\s+(?:day|week|month|year)s?\b', latest_query.lower())
+        }
     
-    # Button to analyze latest query
-    with col2:
-        if st.button("Analyze Latest Query"):
-            st.session_state.selected_query_idx = len(user_queries) - 1
-            st.experimental_rerun()
+    # Filter and clean entities
+    cleaned_entities = clean_entities(extracted_entities)
     
-    # Display selected query and its response
-    query_idx = user_queries[selected_idx][0]
-    query_content = user_queries[selected_idx][1]
+    # Get relevant news based on extracted terms
+    search_terms = cleaned_entities.get("companies", []) + cleaned_entities.get("tickers", []) + cleaned_entities.get("sectors", [])
+    relevant_news = get_mock_news(search_terms, limit=5)
     
-    # Get the assistant's response to this query
-    response_content = ""
-    if query_idx + 1 < len(st.session_state.conversation):
-        if st.session_state.conversation[query_idx + 1]["role"] == "assistant":
-            response_content = st.session_state.conversation[query_idx + 1]["content"]
+    # Mock market data based on query content
+    market_data = get_mock_market_data(cleaned_entities.get("tickers", []))
     
-    # Display the query and response
-    st.markdown('<div class="dashboard-section-header">SELECTED QUERY</div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="dashboard-label">USER QUERY:</div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="dashboard-query-box">{query_content}</div>', unsafe_allow_html=True)
+    # Mock economic indicators
+    economic_indicators = get_mock_economic_indicators()
     
-    if response_content:
-        st.markdown(f'<div class="dashboard-label">ASSISTANT RESPONSE:</div>', unsafe_allow_html=True)
-        st.markdown(f'<div class="dashboard-content">{response_content}</div>', unsafe_allow_html=True)
+    # Construct LLM input dictionary with all elements
+    llm_input = {
+        "user_query": latest_query,
+        "extracted_terms": cleaned_entities,
+        "entity_types": list(cleaned_entities.keys()),
+        "market_data": market_data,
+        "economic_indicators": economic_indicators,
+        "recent_news": relevant_news[:3]  # Top 3 news items
+    }
     
-    # Create tabs for different dashboard views
-    query_flow_tab, components_tab, metrics_tab = st.tabs(["Query Flow", "System Components", "Performance Metrics"])
-    
-    # Query Flow Tab
-    with query_flow_tab:
-        st.markdown('<div class="dashboard-section-header">QUERY PROCESSING FLOW</div>', unsafe_allow_html=True)
-        
-        # Flow diagram
-        st.markdown('<div class="flow-diagram">', unsafe_allow_html=True)
-        
-        # Input step
-        st.markdown('''
-            <div class="flow-step flow-input">
-                <div class="flow-step-header">1. INPUT</div>
-                <div class="flow-step-content">
-                    User query received and parsed for intent and keywords
-                </div>
-            </div>
-            <div class="flow-arrow">↓</div>
-        ''', unsafe_allow_html=True)
-        
-        # Preprocessing step
-        st.markdown('''
-            <div class="flow-step flow-process">
-                <div class="flow-step-header">2. PREPROCESSING</div>
-                <div class="flow-step-content">
-                    Query analyzed for market terms, entities, and semantic intent
-                </div>
-            </div>
-            <div class="flow-arrow">↓</div>
-        ''', unsafe_allow_html=True)
-        
-        # LLM Processing step
-        st.markdown('''
-            <div class="flow-step flow-process">
-                <div class="flow-step-header">3. LLM PROCESSING</div>
-                <div class="flow-step-content">
-                    OpenAI API used to classify query type and extract financial entities
-                </div>
-            </div>
-            <div class="flow-arrow">↓</div>
-        ''', unsafe_allow_html=True)
-        
-        # Data Sources step
-        st.markdown('''
-            <div class="flow-step flow-process">
-                <div class="flow-step-header">4. DATA RETRIEVAL</div>
-                <div class="flow-step-content">
-                    Relevant financial data and news gathered from various APIs
-                </div>
-            </div>
-            <div class="flow-arrow">↓</div>
-        ''', unsafe_allow_html=True)
-        
-        # Response Generation step
-        st.markdown('''
-            <div class="flow-step flow-process">
-                <div class="flow-step-header">5. RESPONSE GENERATION</div>
-                <div class="flow-step-content">
-                    Combined financial analysis and query context to generate response
-                </div>
-            </div>
-            <div class="flow-arrow">↓</div>
-        ''', unsafe_allow_html=True)
-        
-        # Output step
-        st.markdown('''
-            <div class="flow-step flow-output">
-                <div class="flow-step-header">6. OUTPUT</div>
-                <div class="flow-step-content">
-                    Formatted response displayed to user with relevant data visualizations
-                </div>
-            </div>
-        ''', unsafe_allow_html=True)
-        
-        st.markdown('</div>', unsafe_allow_html=True)
-        
-        # Query Context and Data Sources
+    # Display query details
+    with st.expander("Query Details", expanded=True):
         col1, col2 = st.columns(2)
-        
         with col1:
-            st.markdown('<div class="dashboard-card">', unsafe_allow_html=True)
-            st.markdown('<div class="dashboard-card-header">QUERY CONTEXT</div>', unsafe_allow_html=True)
-            st.markdown('<div class="dashboard-card-content">', unsafe_allow_html=True)
-            
-            # Extract keywords from query
-            # In a real implementation, this would use NLP to extract actual entities
-            keywords = []
-            if "market" in query_content.lower():
-                keywords.append(("market", "entity"))
-            if "news" in query_content.lower():
-                keywords.append(("news", "data_type"))
-            if "options" in query_content.lower():
-                keywords.append(("options", "instrument"))
-            if "stock" in query_content.lower() or "stocks" in query_content.lower():
-                keywords.append(("stocks", "instrument"))
-            if "price" in query_content.lower():
-                keywords.append(("price", "attribute"))
-            if "federal reserve" in query_content.lower() or "fed" in query_content.lower():
-                keywords.append(("federal reserve", "institution"))
-            if "interest" in query_content.lower() and "rate" in query_content.lower():
-                keywords.append(("interest rates", "economic_indicator"))
-            if "inflation" in query_content.lower():
-                keywords.append(("inflation", "economic_indicator"))
-            if "gdp" in query_content.lower():
-                keywords.append(("GDP", "economic_indicator"))
-            
-            # Add some default keywords if none detected
-            if not keywords:
-                keywords = [
-                    ("market", "entity"),
-                    ("financial", "category"),
-                    ("analysis", "operation")
-                ]
-            
-            # Display detected keywords
-            st.markdown('<ul class="dashboard-list">', unsafe_allow_html=True)
-            for keyword, tag_type in keywords:
-                st.markdown(f'<li>{keyword} <span class="dashboard-tag active">{tag_type}</span></li>', unsafe_allow_html=True)
-            st.markdown('</ul>', unsafe_allow_html=True)
-            
-            st.markdown('</div></div>', unsafe_allow_html=True)
+            st.subheader("User Query")
+            st.write(latest_query)
+            st.caption(f"Timestamp: {query_timestamp}")
+            st.caption(f"Query length: {query_length} characters")
         
         with col2:
-            st.markdown('<div class="data-source-card">', unsafe_allow_html=True)
-            st.markdown('<div class="data-source-header">DATA SOURCES</div>', unsafe_allow_html=True)
-            
-            # Display data sources
-            st.markdown('<div class="data-source-content">', unsafe_allow_html=True)
-            data_sources = ["Yahoo Finance", "FRED", "News API", "OpenAI", "Historical Data"]
-            for source in data_sources:
-                st.markdown(f'<span class="data-source-tag">{source}</span>', unsafe_allow_html=True)
-            st.markdown('</div>', unsafe_allow_html=True)
-            
-            # Display active sources
-            st.markdown('<div class="data-source-status active"><span class="data-source-dot"></span> OpenAI API [ACTIVE]</div>', unsafe_allow_html=True)
-            st.markdown('<div class="data-source-status active"><span class="data-source-dot"></span> News API [ACTIVE]</div>', unsafe_allow_html=True)
-            st.markdown('<div class="data-source-status"><span class="data-source-dot"></span> FRED API [INACTIVE]</div>', unsafe_allow_html=True)
-            
-            st.markdown('</div>', unsafe_allow_html=True)
+            st.subheader("Assistant Response")
+            if latest_response:
+                st.write(latest_response[:300] + "..." if len(latest_response) > 300 else latest_response)
+            else:
+                st.info("No response available")
     
-    # System Components Tab
-    with components_tab:
-        st.markdown('<div class="dashboard-section-header">SYSTEM ARCHITECTURE</div>', unsafe_allow_html=True)
+    # NEW: LLM Input Formula Visualization
+    with st.expander("How Your Query Becomes an Answer", expanded=True):
+        st.subheader("🔄 The Input Formula")
         
-        # System architecture diagram
-        architecture_tab, components_tab, modules_tab = st.tabs(["Architecture Overview", "Component Details", "Module Structure"])
+        # Create a progress-style indicator for the flow
+        st.markdown("""
+        <style>
+        .step-container {
+            display: flex;
+            flex-direction: column;
+            margin-bottom: 25px;
+        }
+        .step-number {
+            background-color: #00aa00;
+            color: black;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            margin-right: 10px;
+            flex-shrink: 0;
+        }
+        .step-content {
+            background-color: #1e1e1e;
+            padding: 15px;
+            border-radius: 5px;
+            border-left: 3px solid #00ff00;
+            margin-bottom: 5px;
+            width: 100%;
+        }
+        .step-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .step-title {
+            color: #00ff00;
+            font-weight: bold;
+            font-size: 16px;
+            margin: 0;
+        }
+        .step-description {
+            color: white;
+            margin: 0;
+        }
+        .connector {
+            width: 2px;
+            height: 20px;
+            background-color: #00aa00;
+            margin-left: 14px;
+        }
+        </style>
+        """, unsafe_allow_html=True)
         
-        with architecture_tab:
-            # Create an interactive system architecture diagram
-            st.markdown("### System Architecture Diagram")
-            st.markdown("This diagram shows the main components and their interactions in the Options trading analysis system.")
-            
-            # Mermaid diagram for system architecture
-            architecture_mermaid = """
-            %%{init: {'theme': 'dark', 'themeVariables': { 'primaryColor': '#00aa00', 'edgeLabelBackground':'#2a2a2a', 'tertiaryColor': '#1a1a1a'}}}%%
-            graph TD
-                UI[Streamlit UI] --> |User Query| QP[Query Processor]
-                QP --> |Query| LLM[LLM Service]
-                QP --> |Request Data| DC[Data Collection]
-                DC --> |Financial News| NS[News Service]
-                DC --> |Market Data| MD[Market Data Service]
-                DC --> |Economic Data| ED[Economic Data Service]
-                DC --> |Historical Events| HD[Historical Data Service]
-                QP --> |Processed Data| AE[Analysis Engine]
-                AE --> |Events| EC[Event Classifier]
-                AE --> |Patterns| HM[Historical Matcher]
-                AE --> |Sentiment| SA[Sentiment Analyzer]
-                AE --> |Trade Ideas| TP[Trade Picker]
-                QP --> |Final Analysis| UI
-                
-                style UI fill:#121212,stroke:#00ff00,color:#ffffff
-                style QP fill:#1a1a1a,stroke:#00aa00,color:#ffffff
-                style LLM fill:#121212,stroke:#00ff00,color:#ffffff
-                style DC fill:#1a1a1a,stroke:#00aa00,color:#ffffff
-                style NS fill:#1a1a1a,stroke:#333333,color:#ffffff
-                style MD fill:#1a1a1a,stroke:#333333,color:#ffffff
-                style ED fill:#1a1a1a,stroke:#333333,color:#ffffff
-                style HD fill:#1a1a1a,stroke:#333333,color:#ffffff
-                style AE fill:#1a1a1a,stroke:#00aa00,color:#ffffff
-                style EC fill:#1a1a1a,stroke:#333333,color:#ffffff
-                style HM fill:#1a1a1a,stroke:#333333,color:#ffffff
-                style SA fill:#1a1a1a,stroke:#333333,color:#ffffff
-                style TP fill:#1a1a1a,stroke:#333333,color:#ffffff
-            """
-            
-            st.markdown(f"```mermaid\n{architecture_mermaid}\n```", unsafe_allow_html=True)
-            
-            # Add description
-            st.markdown("""
-            #### Architecture Explanation
-            
-            The system follows a modular design with these major components:
-            
-            1. **UI Layer** - Streamlit-based terminal interface for user interaction
-            2. **Query Processor** - Orchestrates the analysis pipeline
-            3. **Data Collection** - Gathers financial news, market and economic data
-            4. **Analysis Engine** - Processes data with specialized components
-            5. **LLM Service** - Provides natural language understanding and generation
-            
-            Data flows from user input through each component, with the Query Processor coordinating the process.
-            """)
+        # Display steps
+        st.markdown("""
+        <div class="step-container">
+            <div class="step-header">
+                <div class="step-number">1</div>
+                <h3 class="step-title">USER QUERY CAPTURED</h3>
+                </div>
+            <div class="step-content">
+                <p class="step-description">Your question is analyzed to identify important keywords, intent, and context.</p>
+            </div>
+            <div class="connector"></div>
+        </div>
         
-        with components_tab:
-            # Create expandable sections for each component group
-            with st.expander("Data Collection Components", expanded=True):
-                # Create a table with component details
-                st.markdown("### Data Collection Components")
-                
-                data_collection = {
-                    "Component": ["RSS Ingestor", "Macro Data Collector", "Options Data Collector", "Technical Indicator Collector"],
-                    "File": ["rss_ingestor.py", "macro_data_collector.py", "options_data_collector.py", "technical_indicator_collector.py"],
-                    "Purpose": [
-                        "Fetches financial news headlines from various sources",
-                        "Collects macroeconomic indicators from FRED API",
-                        "Retrieves options market metrics like IV and Put/Call ratios",
-                        "Calculates technical indicators for market analysis"
-                    ],
-                    "Interfaces": [
-                        "RSS Feeds (Yahoo, CNBC, etc.)",
-                        "FRED API, File Cache",
-                        "Yahoo Finance API",
-                        "Yahoo Finance, Historical Data"
-                    ]
-                }
-                
-                st.dataframe(pd.DataFrame(data_collection))
-                
-                # Show the component code structure
-                st.markdown("#### Key Functions:")
-                st.code('''
-# rss_ingestor.py
-def fetch_rss_headlines(max_headlines=50, hours_lookback=24):
-    """Fetch headlines from multiple financial news RSS feeds"""
-    
-# macro_data_collector.py
-def get_macro_snapshot():
-    """Get current macro economic indicators"""
-    
-# options_data_collector.py
-def get_options_snapshot(ticker="SPY"):
-    """Get options market metrics for a specific ticker"""
-                ''', language="python")
-            
-            with st.expander("Analysis Components", expanded=False):
-                # Create a table with analysis component details
-                st.markdown("### Analysis Components")
-                
-                analysis_components = {
-                    "Component": ["LLM Event Classifier", "Event Tagger", "Prompt Context Builder", "Historical Matcher", "Sentiment Analyzer"],
-                    "File": ["llm_event_classifier.py", "event_tagger.py", "prompt_context_builder.py", "historical_matcher.py", "sentiment_analyzer.py"],
-                    "Purpose": [
-                        "Classifies financial headlines by type and sentiment",
-                        "Adds contextual tags to financial events",
-                        "Enriches prompts with economic context",
-                        "Matches events to historical patterns",
-                        "Analyzes sentiment in financial texts"
-                    ],
-                    "Inputs": [
-                        "News headlines, Macro data",
-                        "Event data, Date information",
-                        "User query, Market context",
-                        "Event description, Historical templates",
-                        "Financial text, Historical sentiment"
-                    ]
-                }
-                
-                st.dataframe(pd.DataFrame(analysis_components))
-                
-                # Show sample code structure
-                st.markdown("#### Key Functions:")
-                st.code('''
-# llm_event_classifier.py
-def classify_macro_event(event_text, model=None):
-    """Classify a macro event using the LLM"""
-    
-# historical_matcher.py
-def find_similar_historical_events(event_description, max_results=5):
-    """Find historical events similar to the described event"""
-                ''', language="python")
-            
-            with st.expander("Recommendation Components", expanded=False):
-                # Create a table with recommendation component details
-                st.markdown("### Recommendation Components")
-                
-                recommendation_components = {
-                    "Component": ["Trade Picker", "LLM Event Query"],
-                    "File": ["trade_picker.py", "llm_event_query.py"],
-                    "Purpose": [
-                        "Generates trade ideas based on event analysis",
-                        "Main entry point for processing user queries"
-                    ],
-                    "Outputs": [
-                        "Trade recommendations with ticker, option type, expiry",
-                        "Complete analysis with market impact and trade recommendations"
-                    ]
-                }
-                
-                st.dataframe(pd.DataFrame(recommendation_components))
-                
-                # Show sample code structure
-                st.markdown("#### Key Functions:")
-                st.code('''
-# trade_picker.py
-def generate_trade_idea(event_classification, macro_snapshot, historical_matches=None):
-    """Generate a trade idea based on event analysis"""
-    
-# llm_event_query.py
-def process_query(user_input, session_id=None, is_follow_up=None, model=None):
-    """Process a user query and generate an analysis with trade recommendations"""
-                ''', language='python')
-            
-            with st.expander("Persistence Components", expanded=False):
-                # Create a table with persistence component details
-                st.markdown("### Persistence Components")
-                
-                persistence_components = {
-                    "Component": ["Trade Persistence", "Analysis Persistence", "Evaluation"],
-                    "File": ["trade_persistence.py", "analysis_persistence.py", "evaluator.py"],
-                    "Purpose": [
-                        "Stores trade recommendations",
-                        "Stores historical analyses",
-                        "Evaluates trade performance"
-                    ],
-                    "Storage": [
-                        "trade_history.json file",
-                        "analysis_history/ directory",
-                        "evaluated_trades.json"
-                    ]
-                }
-                
-                st.dataframe(pd.DataFrame(persistence_components))
+        <div class="step-container">
+            <div class="step-header">
+                <div class="step-number">2</div>
+                <h3 class="step-title">ENTITY EXTRACTION</h3>
+                </div>
+            <div class="step-content">
+                <p class="step-description">We identify companies, stock tickers, financial terms, sectors, and time periods from your query.</p>
+            </div>
+            <div class="connector"></div>
+        </div>
         
-        with modules_tab:
-            # Show file sizes and complexity metrics
-            st.markdown("### Module Size and Complexity")
-            
-            module_metrics = {
-                "Module": [
-                    "llm_event_query.py",
-                    "streamlit_app.py",
-                    "llm_event_classifier.py", 
-                    "prompt_context_builder.py",
-                    "macro_data_collector.py",
-                    "historical_matcher.py", 
-                    "sentiment_analyzer.py",
-                    "view_analysis.py",
-                    "analysis_persistence.py",
-                    "news_monitor.py",
-                    "event_tagger.py",
-                    "trade_picker.py"
-                ],
-                "Size (KB)": [126, 90, 29, 43, 35, 21, 23, 30, 29, 19, 17, 14],
-                "Lines": [2806, 2759, 601, 1061, 809, 547, 642, 652, 764, 480, 423, 388],
-                "Functions": [38, 24, 12, 15, 14, 10, 13, 12, 17, 9, 8, 6],
-                "Dependencies": [9, 7, 5, 4, 6, 5, 6, 5, 4, 5, 3, 5]
-            }
-            
-            # Create a dataframe and sort by size
-            df_metrics = pd.DataFrame(module_metrics)
-            df_metrics = df_metrics.sort_values(by='Lines', ascending=False)
-            
-            # Display the table
-            st.dataframe(df_metrics)
-            
-            # Create a bar chart of module sizes
-            st.markdown("### Module Size Comparison")
-            chart_data = df_metrics[['Module', 'Lines']].set_index('Module')
-            st.bar_chart(chart_data)
-            
-            # Show core dependencies
-            st.markdown("### Core Dependencies")
-            dependencies = {
-                "Package": ["OpenAI", "Streamlit", "YFinance", "FRED API", "Pandas", "Requests", "Python-dotenv"],
-                "Purpose": [
-                    "Natural language processing and generation",
-                    "Web interface and visualization",
-                    "Financial market data retrieval",
-                    "Economic data retrieval",
-                    "Data manipulation and analysis",
-                    "HTTP API access",
-                    "Environment variable management"
-                ],
-                "Usage": [
-                    "Text classification, content generation",
-                    "User interface, interactive dashboard",
-                    "Stock data, options metrics",
-                    "Macroeconomic indicators",
-                    "Data processing and transformation",
-                    "API calls to financial services",
-                    "API key and configuration management"
-                ]
-            }
-            
-            st.dataframe(pd.DataFrame(dependencies))
+        <div class="step-container">
+            <div class="step-header">
+                <div class="step-number">3</div>
+                <h3 class="step-title">DATA GATHERING</h3>
+                </div>
+            <div class="step-content">
+                <p class="step-description">System collects relevant market data, economic indicators, and financial news related to your query.</p>
+            </div>
+            <div class="connector"></div>
+        </div>
         
-        # Component flow
-        st.markdown('<div class="dashboard-section-header">DATA PROCESSING PIPELINE</div>', unsafe_allow_html=True)
+        <div class="step-container">
+            <div class="step-header">
+                <div class="step-number">4</div>
+                <h3 class="step-title">PROMPT CONSTRUCTION</h3>
+                </div>
+            <div class="step-content">
+                <p class="step-description">Your query + extracted entities + market data + news + economic indicators are combined into a comprehensive prompt.</p>
+            </div>
+            <div class="connector"></div>
+        </div>
         
-        # Create a visual representation of data flow
-        col1, col2 = st.columns([1, 2])
+        <div class="step-container">
+            <div class="step-header">
+                <div class="step-number">5</div>
+                <h3 class="step-title">LLM PROCESSING</h3>
+                </div>
+            <div class="step-content">
+                <p class="step-description">The AI analyzes all the information to generate a comprehensive response with market analysis and insights.</p>
+            </div>
+            <div class="connector"></div>
+        </div>
         
-        with col1:
-            st.markdown("### Processing Steps")
-            st.markdown("""
-            1. **Query Parsing**
-            2. **Data Collection**
-            3. **Event Classification**
-            4. **Historical Matching**
-            5. **Context Enhancement**
-            6. **Trade Recommendation**
-            7. **Response Generation**
-            """)
-            
-            st.markdown("### Key Files")
-            key_files = {
-                "File": [
-                    "llm_event_query.py",
-                    "rss_ingestor.py", 
-                    "macro_data_collector.py",
-                    "historical_matcher.py",
-                    "prompt_context_builder.py",
-                    "trade_picker.py"
-                ],
-                "Size": ["126KB", "5.8KB", "35KB", "21KB", "43KB", "14KB"]
-            }
-            
-            st.dataframe(pd.DataFrame(key_files))
+        <div class="step-container">
+            <div class="step-header">
+                <div class="step-number">6</div>
+                <h3 class="step-title">RESPONSE DELIVERY</h3>
+                </div>
+            <div class="step-content">
+                <p class="step-description">You receive a structured answer with market analysis, directional outlook, and trade recommendations.</p>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # NEW: Input Component Breakdown
+    with st.expander("🧩 What Goes Into Your Answer", expanded=True):
+        # Create a visual representation of the formula with percentage bars
+        st.subheader("Input Components")
         
-        with col2:
-            # Display detailed pipeline flow
-            pipeline_mermaid = """
-            %%{init: {'theme': 'dark', 'themeVariables': { 'primaryColor': '#00aa00', 'edgeLabelBackground':'#2a2a2a', 'tertiaryColor': '#1a1a1a'}}}%%
-            graph TD
-                A[User Query] --> B[Query Parser]
-                B --> C{Query Type Detection}
-                C -->|Historical Query| D[Extract Date & Entity]
-                C -->|Current Market| E[Extract Entities]
-                D --> F[Historical Data Lookup]
-                E --> G[Current Data Collection]
-                G --> H[RSS News]
-                G --> I[FRED Macro Data]
-                G --> J[Yahoo Finance Data]
-                F --> K[LLM Context Builder]
-                H --> K
-                I --> K
-                J --> K
-                K --> L[LLM Processing]
-                L --> M[Classification]
-                L --> N[Analysis]
-                L --> O[Trade Recommendation]
-                M --> P[Response Formatter]
-                N --> P
-                O --> P
-                P --> Q[User Response]
-                
-                style A fill:#121212,stroke:#00ff00,color:#ffffff
-                style B fill:#1a1a1a,stroke:#333333,color:#ffffff
-                style C fill:#1a1a1a,stroke:#00aa00,color:#ffffff
-                style D fill:#1a1a1a,stroke:#333333,color:#ffffff
-                style E fill:#1a1a1a,stroke:#333333,color:#ffffff
-                style F fill:#1a1a1a,stroke:#333333,color:#ffffff
-                style G fill:#1a1a1a,stroke:#333333,color:#ffffff
-                style H fill:#1a1a1a,stroke:#333333,color:#ffffff
-                style I fill:#1a1a1a,stroke:#333333,color:#ffffff
-                style J fill:#1a1a1a,stroke:#333333,color:#ffffff
-                style K fill:#1a1a1a,stroke:#00aa00,color:#ffffff
-                style L fill:#121212,stroke:#00ff00,color:#ffffff
-                style M fill:#1a1a1a,stroke:#333333,color:#ffffff
-                style N fill:#1a1a1a,stroke:#333333,color:#ffffff
-                style O fill:#1a1a1a,stroke:#333333,color:#ffffff
-                style P fill:#1a1a1a,stroke:#333333,color:#ffffff
-                style Q fill:#121212,stroke:#00ff00,color:#ffffff
-            """
-            
-            st.markdown(f"```mermaid\n{pipeline_mermaid}\n```", unsafe_allow_html=True)
+        # Get weights for each component
+        query_weight = 35
+        entities_weight = 15
+        market_weight = 20
+        news_weight = 20
+        econ_weight = 10
         
-        # Code inspection interface
-        st.markdown('<div class="dashboard-section-header">CODE INSPECTION</div>', unsafe_allow_html=True)
-        
-        # Create a code browser interface
-        code_files = [
-            "llm_event_query.py",
-            "streamlit_app.py",
-            "llm_event_classifier.py",
-            "prompt_context_builder.py",
-            "historical_matcher.py",
-            "rss_ingestor.py",
-            "macro_data_collector.py",
-            "options_data_collector.py",
-            "trade_picker.py"
+        # Display component breakdown with percentage bars
+        components = [
+            {"name": "Your Query", "weight": query_weight, "color": "#00ff00", "icon": "❓", 
+             "description": f"'{latest_query[:50] + '...' if len(latest_query) > 50 else latest_query}'"},
+            {"name": "Extracted Entities", "weight": entities_weight, "color": "#ff9900", "icon": "🔍", 
+             "description": f"{sum(len(entities) for entities in cleaned_entities.values())} terms identified"},
+            {"name": "Market Data", "weight": market_weight, "color": "#ff00aa", "icon": "📊", 
+             "description": f"{len(market_data)} market indicators"},
+            {"name": "News Articles", "weight": news_weight, "color": "#00aaff", "icon": "📰", 
+             "description": f"{len(relevant_news[:3])} recent headlines"},
+            {"name": "Economic Indicators", "weight": econ_weight, "color": "#00ffaa", "icon": "📈", 
+             "description": f"{len(economic_indicators)} economic metrics"}
         ]
         
-        selected_file = st.selectbox("Select file to inspect", code_files)
+        for comp in components:
+            col1, col2 = st.columns([1, 4])
+            with col1:
+                st.markdown(f"<div style='font-size:30px;text-align:center;'>{comp['icon']}</div>", unsafe_allow_html=True)
+                st.markdown(f"<div style='text-align:center;color:{comp['color']};font-weight:bold;'>{comp['weight']}%</div>", unsafe_allow_html=True)
+        with col2:
+                st.markdown(f"<p style='margin-bottom:0;'><b style='color:{comp['color']};'>{comp['name']}</b></p>", unsafe_allow_html=True)
+                st.markdown(f"<div style='width:100%;background-color:#333;height:20px;border-radius:5px;margin-top:5px;'><div style='width:{comp['weight']}%;background-color:{comp['color']};height:20px;border-radius:5px;'></div></div>", unsafe_allow_html=True)
+                st.caption(comp["description"])
+                st.markdown("<div style='height:5px'></div>", unsafe_allow_html=True)
         
-        # Display file information
-        file_info = {
-            "llm_event_query.py": {
-                "description": "Main entry point for processing user queries about market events",
-                "key_functions": ["process_query", "extract_date_from_query", "analyze_historical_event", "get_relevant_news"],
-                "snippet": """
-def process_query(user_input: str, session_id=None, is_follow_up=None, model=None):
-    \"\"\"
-    Process a query and maintain conversation context.
+        # Show the formula in plain language
+        st.markdown("---")
+        st.markdown("### The Formula in Plain English")
+        st.markdown("""
+        ```
+        FINAL ANSWER = AI_Model(Your_Query + Extracted_Entities + Market_Data + News + Economic_Indicators)
+        ```
+        """)
+        
+    # NEW: Actual Input Values section
+    with st.expander("🔎 Content That Went Into Your Answer", expanded=True):
+        component_tabs = st.tabs(["User Query", "Entities", "Market Data", "News", "Economic Indicators"])
+        
+        with component_tabs[0]:
+            st.markdown("### Your Original Question")
+            st.info(latest_query)
+        
+        with component_tabs[1]:
+            st.markdown("### Extracted Entities")
+            
+            if any(entities for entities in cleaned_entities.values()):
+                entity_cols = st.columns(len([k for k, v in cleaned_entities.items() if v]))
+                col_idx = 0
+                
+                for entity_type, entities in cleaned_entities.items():
+                    if entities:
+                        with entity_cols[col_idx]:
+                            st.markdown(f"#### {entity_type.title()}")
+                            for entity in entities:
+                                st.markdown(f"- {entity}")
+                        col_idx += 1
+            else:
+                st.info("No entities were extracted from your query.")
+        
+        with component_tabs[2]:
+            st.markdown("### Market Data")
+            if market_data:
+                for i, data in enumerate(market_data):
+                    ticker = data.get("ticker", "Unknown")
+                    price = data.get("price", "N/A")
+                    change = data.get("change", "N/A")
+                    
+                    # Color for change (green for positive, red for negative)
+                    color = "#00ff00" if "+" in change else "#ff0000" if "-" in change else "#ffffff"
+                    
+                    st.markdown(f"""
+                    <div style="padding:10px; margin-bottom:10px; background-color:#1e1e1e; border-radius:5px; border-left:3px solid #ff00aa;">
+                        <div style="display:flex; justify-content:space-between;">
+                            <span style="font-weight:bold; font-size:16px;">{ticker}</span>
+                            <span style="font-weight:bold;">{price}</span>
+                        </div>
+                        <div style="display:flex; justify-content:space-between; margin-top:5px;">
+                            <span>{data.get("name", ticker)}</span>
+                            <span style="color:{color};">{change}</span>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+            else:
+                st.info("No specific market data was used for this query.")
+        
+        with component_tabs[3]:
+            st.markdown("### Recent News Headlines")
+            if relevant_news:
+                for news in relevant_news[:3]:
+                    st.markdown(f"""
+                    <div style="padding:10px; margin-bottom:10px; background-color:#1e1e1e; border-radius:5px; border-left:3px solid #00aaff;">
+                        <div style="font-weight:bold; margin-bottom:5px;">{news['title']}</div>
+                        <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
+                            <span style="color:#00aaff;">{news['source']}</span>
+                            <span style="color:#cccccc;">{news['date']}</span>
+                        </div>
+                        <div style="font-size:0.9em;">{news['summary']}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+            else:
+                st.info("No relevant news articles were included for this query.")
+        
+        with component_tabs[4]:
+            st.markdown("### Economic Indicators")
+            if economic_indicators:
+                # Create a grid of economic indicators
+                indicators_html = "<div style='display:grid; grid-template-columns:repeat(2, 1fr); gap:10px;'>"
+                
+                for indicator in economic_indicators:
+                    name = indicator.get("indicator", "Unknown")
+                    value = indicator.get("value", "N/A")
+                    change = indicator.get("change", "N/A")
+                    
+                    # Color for change
+                    change_color = "#00ff00" if "+" in change else "#ff0000" if "-" in change else "#ffffff"
+                    
+                    indicators_html += f"""
+                    <div style="padding:10px; background-color:#1e1e1e; border-radius:5px; border-left:3px solid #00ffaa;">
+                        <div style="font-weight:bold; margin-bottom:5px;">{name}</div>
+                        <div style="display:flex; justify-content:space-between;">
+                            <span style="font-size:1.2em;">{value}</span>
+                            <span style="color:{change_color};">{change}</span>
+                        </div>
+                    </div>
+                    """
+                
+                indicators_html += "</div>"
+                st.markdown(indicators_html, unsafe_allow_html=True)
+            else:
+                st.info("No economic indicators were included for this query.")
     
-    Args:
-        user_input: The user's query text
-        session_id: Optional ID for continuing a conversation
-        is_follow_up: Optional flag to force treating as follow-up
-        model: Optional model to use for this query (defaults to DEFAULT_MODEL)
+    # NEW: Example Full Analysis Flow
+    with st.expander("📊 Complete Analysis Sample", expanded=False):
+        st.markdown("### Real Example: Bitcoin ETF Query Analysis")
         
-    Returns:
-        tuple: (response, session_id) - response is the analysis result,
-               session_id can be used for follow-up questions
-    \"\"\"
-    # Use the provided model or fall back to DEFAULT_MODEL
-    model_to_use = model or DEFAULT_MODEL
-    
-    try:
-        # Clean up old sessions periodically
-        clean_old_sessions()
+        # Sample data for demonstration
+        sample_data = """
+        🔄 DATA FLOW: SENDING QUERY TO LLM
+        ------------------------------------------------------------
+        📥 INPUT QUERY: "What happened when Bitcoin ETF was approved?"
         
-        # Get or create session
-        session = get_session(session_id)
+        📰 NEWS INTEGRATED INTO PROMPT:
+        - [CNBC Markets] Four money traps to avoid in a volatile market, according to 'Fast Money' trader Tim Seymour
+        - [Yahoo Finance] Nasdaq Tumbles 3.1% as Nvidia Drives Tech Sell-Off; Markets Assess Fed Chair Remarks
+        - [Yahoo Finance] Stocks resume sell-off as tariff costs hit tech and Powell delivers starkest warning yet on Trump's trade war
+        - [Yahoo Finance] How major US stock indexes fared Wednesday, 4/16/2025
+        - [CNBC Markets] OpenAI in talks to pay about $3 billion to acquire AI coding startup Windsurf
         
-        # Auto-detect if this is a follow-up question if not specified
-        if is_follow_up is None:
-            is_follow_up = session.is_follow_up_question(user_input)
+        📊 MACRO ENVIRONMENT DATA:
+        - Inflation (CPI): 2.4%
+        - Fed Funds Rate: 4.33%
+        - Unemployment: 4.2%
+        - 10Y Treasury: 4.28%
         
-        # Add query to history
-        session.add_query(user_input, is_follow_up)
-"""
-            },
-            "streamlit_app.py": {
-                "description": "Web interface for the Options analysis system using Streamlit",
-                "key_functions": ["main", "display_chat_interface", "display_news_feed", "process_user_query"],
-                "snippet": """
-def process_user_query(user_query):
-    # Add to conversation history immediately for better UX
-    st.session_state.conversation.append({"role": "user", "content": user_query})
-    
-    try:
-        # Process the query
-        response, new_session_id = process_query(
-            user_query, 
-            st.session_state.session_id,
-            # If we've already had a conversation, treat this as a follow-up
-            is_follow_up=st.session_state.has_received_response,
-        )
+        🧮 LLM INPUT FORMULA:
+        Final_Output = LLM(User_Query + Enhanced_Context + News_Articles + Macro_Data)
         
-        # Update session ID if changed
-        if new_session_id:
-            st.session_state.session_id = new_session_id
-"""
-            },
-            "historical_matcher.py": {
-                "description": "Matches events to historical patterns using semantic similarity",
-                "key_functions": ["find_similar_historical_events", "calculate_similarity_score"],
-                "snippet": """
-def find_similar_historical_events(event_description, max_results=5):
-    \"\"\"
-    Find historical events that are similar to the described event.
-    
-    Args:
-        event_description: Text description of the event to match
-        max_results: Maximum number of similar events to return
-    
-    Returns:
-        list: List of similar events with similarity scores
-    \"\"\"
-"""
-            }
+        FORMULA WEIGHT DISTRIBUTION:
+        - User Query:         31.2%
+        - News Articles:      43.1%
+        - Macro Environment:  24.2%
+        - Historical Data:    0.0%
+        
+        📤 OUTPUT COMPONENTS:
+        
+        MARKET ANALYSIS:
+        The recent financial news indicates a volatile market environment with significant sell-offs in tech stocks driven by concerns over trade policies and Federal Reserve Chair's remarks.
+        
+        DIRECTIONAL OUTLOOK:
+        Given the current market volatility and uncertainty surrounding trade policies, the outlook remains cautious. The sell-off in tech stocks and the broader market indicates a risk-off sentiment among investors.
+        
+        TRADE SUGGESTION:
+        **Trade Idea:** Short Trade on Nasdaq ETF (QQQ)
+        - **Direction:** Bearish
+        - **Timeframe:** Short-term
+        - **Risk Level:** Medium to High
+        """
+        
+        st.code(sample_data, language=None)
+        
+        st.markdown("### Visualization of the Analysis Flow")
+        
+        # Create a visual flow diagram
+        flow_html = """
+        <div style="background-color:#1e1e1e; padding:15px; border-radius:5px; margin-bottom:15px;">
+            <div style="display:flex; align-items:center; margin-bottom:10px;">
+                <div style="background-color:#00aa00; color:black; width:30px; height:30px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:bold; margin-right:10px;">1</div>
+                <div>
+                    <div style="font-weight:bold; color:#00ff00;">USER QUERY</div>
+                    <div>"What happened when Bitcoin ETF was approved?"</div>
+                </div>
+            </div>
+            <div style="text-align:center; font-size:20px; margin:10px 0;">↓</div>
+            <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
+                <div style="width:30%; background-color:#222; padding:10px; border-radius:5px; border-left:3px solid #00aaff;">
+                    <div style="font-weight:bold; color:#00aaff; margin-bottom:5px;">NEWS DATA</div>
+                    <div style="font-size:0.9em;">5 recent headlines</div>
+                </div>
+                <div style="width:30%; background-color:#222; padding:10px; border-radius:5px; border-left:3px solid #ff9900;">
+                    <div style="font-weight:bold; color:#ff9900; margin-bottom:5px;">ENTITY EXTRACTION</div>
+                    <div style="font-size:0.9em;">Bitcoin, ETF, approval</div>
+                </div>
+                <div style="width:30%; background-color:#222; padding:10px; border-radius:5px; border-left:3px solid #00ffaa;">
+                    <div style="font-weight:bold; color:#00ffaa; margin-bottom:5px;">MACRO DATA</div>
+                    <div style="font-size:0.9em;">CPI: 2.4%, Fed Rate: 4.33%</div>
+                </div>
+            </div>
+            <div style="text-align:center; font-size:20px; margin:10px 0;">↓</div>
+            <div style="background-color:#222; padding:10px; border-radius:5px; margin-bottom:10px; border-left:3px solid #ff00aa;">
+                <div style="font-weight:bold; color:#ff00aa; margin-bottom:5px;">LLM PROCESSING</div>
+                <div style="font-size:0.9em;">All components analyzed by AI model to generate comprehensive response</div>
+            </div>
+            <div style="text-align:center; font-size:20px; margin:10px 0;">↓</div>
+            <div style="background-color:#222; padding:10px; border-radius:5px; border-left:3px solid #00ff00;">
+                <div style="font-weight:bold; color:#00ff00; margin-bottom:5px;">FINAL RESPONSE</div>
+                <div style="font-size:0.9em;">Market Analysis + Directional Outlook + Trade Recommendation</div>
+            </div>
+        </div>
+        """
+        
+        st.markdown(flow_html, unsafe_allow_html=True)
+        
+    # Update the tabs to be more user-friendly
+    tab1, tab2, tab3, tab4 = st.tabs(["Query Analysis", "Market Data", "News Sources", "Data Sources"])
+
+    # NEW: Component Equation Builder
+    with st.expander("🔬 EXACT QUERY COMPOSITION", expanded=True):
+        st.markdown("### SEE EXACTLY WHAT GOES INTO YOUR ANSWER")
+        
+        # Create a step-by-step equation builder showing the exact input values
+        st.markdown("""
+        <style>
+        .equation-container {
+            margin-bottom: 20px;
+            background-color: #1a1a1a;
+            border-radius: 5px;
+            padding: 15px;
         }
+        .equation-title {
+            color: #00ff00;
+            font-weight: bold;
+            margin-bottom: 10px;
+            font-size: 16px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .equation-row {
+            display: flex;
+            align-items: flex-start;
+            margin-bottom: 12px;
+        }
+        .equation-symbol {
+            font-size: 24px;
+            margin: 0 15px;
+            color: #00ff00;
+            font-weight: bold;
+        }
+        .equation-value {
+            background-color: #222;
+            padding: 10px;
+            border-radius: 4px;
+            color: #ffffff;
+            flex-grow: 1;
+            border-left: 3px solid;
+            font-family: 'Courier New', monospace;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .equation-label {
+            width: 170px;
+            text-align: right;
+            padding-right: 10px;
+            font-weight: bold;
+            color: #cccccc;
+            text-transform: uppercase;
+            font-size: 14px;
+            letter-spacing: 0.5px;
+        }
+        .result-box {
+            background-color: #222;
+            padding: 15px;
+            border-radius: 4px;
+            border-left: 3px solid #00ff00;
+            margin-top: 20px;
+            text-align: center;
+        }
+        .tag-pill {
+            display: inline-block;
+            padding: 2px 8px;
+            background-color: #333;
+            border-radius: 10px;
+            margin: 2px;
+            font-size: 12px;
+            color: white;
+        }
+        .data-preview {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+        }
+        .data-item {
+            background-color: #333;
+            padding: 8px;
+            border-radius: 4px;
+            margin-bottom: 5px;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+
+        # Create the equation view
+        st.markdown("""
+        <div class="equation-container">
+            <div class="equation-title">QUERY INPUT FORMULA</div>
+        """, unsafe_allow_html=True)
+        
+        # USER QUERY
+        st.markdown(f"""
+        <div class="equation-row">
+            <div class="equation-label">YOUR QUERY</div>
+            <div class="equation-value" style="border-color: #00ff00;">
+                {latest_query}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # + EXTRACTED ENTITIES
+        entity_html = ""
+        if any(entities for entities in cleaned_entities.values()):
+            entity_items = []
+            for entity_type, entities in cleaned_entities.items():
+                if entities:
+                    for entity in entities:
+                        entity_items.append(f'<div class="data-item"><strong>{entity_type}:</strong> {entity}</div>')
+            entity_html = "".join(entity_items)
+        else:
+            entity_html = "<em>No entities extracted</em>"
+            
+        st.markdown(f"""
+        <div class="equation-row">
+            <div class="equation-symbol">+</div>
+            <div class="equation-label">ENTITY EXTRACTION</div>
+            <div class="equation-value" style="border-color: #ff9900;">
+                {entity_html}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # + MARKET DATA
+        market_html = ""
+        if market_data:
+            market_items = []
+            for data in market_data:
+                ticker = data.get("ticker", "Unknown")
+                price = data.get("price", "N/A")
+                change = data.get("change", "N/A")
+                name = data.get("name", "")
+                color = "color: #00ff00;" if "+" in change else "color: #ff0000;" if "-" in change else ""
+                market_items.append(f"""
+                <div class="data-item">
+                    <strong>{ticker}</strong> ({name}): {price} <span style="{color}">{change}</span>
+                </div>
+                """)
+            market_html = "".join(market_items)
+        else:
+            market_html = "<em>No market data included</em>"
+            
+        st.markdown(f"""
+        <div class="equation-row">
+            <div class="equation-symbol">+</div>
+            <div class="equation-label">MARKET DATA</div>
+            <div class="equation-value" style="border-color: #ff00aa;">
+                {market_html}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # + NEWS DATA
+        news_html = ""
+        if relevant_news:
+            news_items = []
+            for news in relevant_news[:3]:
+                title = news.get("title", "Unknown")
+                source = news.get("source", "Unknown")
+                date = news.get("date", "")
+                news_items.append(f"""
+                <div class="data-item">
+                    <div><strong>{source}</strong> ({date})</div>
+                    <div>{title}</div>
+                </div>
+                """)
+            news_html = "".join(news_items)
+        else:
+            news_html = "<em>No news articles included</em>"
+            
+        st.markdown(f"""
+        <div class="equation-row">
+            <div class="equation-symbol">+</div>
+            <div class="equation-label">NEWS ARTICLES</div>
+            <div class="equation-value" style="border-color: #00aaff;">
+                {news_html}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # + ECONOMIC INDICATORS
+        econ_html = ""
+        if economic_indicators:
+            econ_items = []
+            for indicator in economic_indicators:
+                name = indicator.get("indicator", "Unknown")
+                value = indicator.get("value", "N/A")
+                change = indicator.get("change", "N/A")
+                color = "color: #00ff00;" if "+" in change else "color: #ff0000;" if "-" in change else ""
+                econ_items.append(f"""
+                <div class="data-item">
+                    <strong>{name}:</strong> {value} <span style="{color}">{change}</span>
+                </div>
+                """)
+            econ_html = "".join(econ_items)
+        else:
+            econ_html = "<em>No economic indicators included</em>"
+            
+        st.markdown(f"""
+        <div class="equation-row">
+            <div class="equation-symbol">+</div>
+            <div class="equation-label">ECONOMIC DATA</div>
+            <div class="equation-value" style="border-color: #00ffaa;">
+                {econ_html}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # RESULT
+        st.markdown("""
+        <div class="equation-row">
+            <div class="equation-symbol">=</div>
+            <div class="result-box">
+                <span style="color: #00ff00; font-weight: bold; font-size: 18px;">LLM ANALYSIS INPUT</span>
+            </div>
+        </div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Add JSON representation and raw prompt
+        st.subheader("RAW LLM INPUT")
+        st.markdown("""
+        <div style="background-color: #1a1a1a; padding: 15px; border-radius: 5px; margin-bottom: 15px;">
+            <div style="color: #00ff00; font-weight: bold; font-size: 16px; margin-bottom: 10px;">SYSTEM PROMPT</div>
+            <div style="background-color: #222; padding: 10px; border-radius: 4px; font-family: 'Courier New', monospace; max-height: 200px; overflow-y: auto; color: #cccccc;">
+            You are a financial market analyst AI assistant. Analyze the provided user query, market data, news headlines, and economic indicators to provide insights about market events, trends, and potential trade ideas. 
+            
+            Structure your response in the following sections:
+            1. MARKET ANALYSIS: Provide a concise analysis of the current market situation based on the provided data.
+            2. DIRECTIONAL OUTLOOK: Offer a directional prediction based on the analysis.
+            3. TRADE SUGGESTION: If appropriate, suggest a potential trade idea with specific parameters.
+            
+            Base your analysis on facts from the provided data, not on speculation.
+            </div>
+        </div>
+        
+        <div style="background-color: #1a1a1a; padding: 15px; border-radius: 5px; margin-bottom: 15px;">
+            <div style="color: #00ff00; font-weight: bold; font-size: 16px; margin-bottom: 10px;">USER PROMPT TEMPLATE</div>
+            <div style="background-color: #222; padding: 10px; border-radius: 4px; font-family: 'Courier New', monospace; max-height: 200px; overflow-y: auto; color: #cccccc;">
+            USER QUERY:
+            {user_query}
+            
+            EXTRACTED ENTITIES:
+            {entities}
+            
+            CURRENT MARKET DATA:
+            {market_data}
+            
+            RECENT NEWS HEADLINES:
+            {news_headlines}
+            
+            ECONOMIC INDICATORS:
+            {economic_indicators}
+            
+            Please analyze this information and provide insights about the market events, trends, and potential trade ideas.
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Show JSON representation
+        st.markdown('<div style="color: #00ff00; font-weight: bold; font-size: 16px; margin-bottom: 10px;">COMPLETE JSON DATA SENT TO LLM</div>', unsafe_allow_html=True)
+        st.json(llm_input)
+
+    # Data Flow Visualization
+    with st.expander("🔄 DATA FLOW VISUALIZATION", expanded=True):
+        st.markdown("### SEE HOW DATA FLOWS FROM SOURCES TO RESULT")
+        
+        st.markdown("""
+        <style>
+        .flow-container {
+            background-color: #1a1a1a;
+            border-radius: 5px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .flow-stage {
+            text-align: center;
+            margin-bottom: 10px;
+        }
+        .flow-title {
+            color: #00ff00;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 5px;
+        }
+        .flow-arrow {
+            color: #00ff00;
+            font-size: 24px;
+            margin: 5px 0;
+        }
+        .data-box {
+            display: inline-block;
+            padding: 8px 12px;
+            margin: 5px;
+            background-color: #333;
+            border-radius: 4px;
+            text-align: center;
+            font-size: 0.9em;
+        }
+        .data-box-green {
+            border-left: 3px solid #00ff00;
+        }
+        .data-box-blue {
+            border-left: 3px solid #00aaff;
+        }
+        .data-box-orange {
+            border-left: 3px solid #ff9900;
+        }
+        .data-box-pink {
+            border-left: 3px solid #ff00aa;
+        }
+        .data-box-teal {
+            border-left: 3px solid #00ffaa;
+        }
+        .processing-box {
+            background-color: #222;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 10px auto;
+            max-width: 500px;
+            border-left: 3px solid #00ff00;
+            text-align: center;
+        }
+        .flow-stage-container {
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-bottom: 10px;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+        
+        # Create the flow visualization
+        st.markdown("""
+        <div class="flow-container">
+            <!-- Stage 1: Input Sources -->
+            <div class="flow-stage">
+                <div class="flow-title">INPUT SOURCES</div>
+                <div class="flow-stage-container">
+                    <div class="data-box data-box-green">User Query Input</div>
+                    <div class="data-box data-box-blue">RSS News Feed</div>
+                    <div class="data-box data-box-pink">Yahoo Finance API</div>
+                    <div class="data-box data-box-teal">FRED Economic API</div>
+                </div>
+            </div>
+            
+            <div class="flow-arrow">↓</div>
+            
+            <!-- Stage 2: Data Retrieval -->
+            <div class="flow-stage">
+                <div class="flow-title">DATA RETRIEVAL</div>
+                <div class="flow-stage-container">
+                    <div class="data-box data-box-green">Raw Query Text</div>
+                    <div class="data-box data-box-blue">News Headlines</div>
+                    <div class="data-box data-box-pink">Stock Prices & Charts</div>
+                    <div class="data-box data-box-teal">Economic Indicators</div>
+                </div>
+            </div>
+            
+            <div class="flow-arrow">↓</div>
+            
+            <!-- Stage 3: Data Processing -->
+            <div class="flow-stage">
+                <div class="flow-title">DATA PROCESSING</div>
+                <div class="flow-stage-container">
+                    <div class="data-box data-box-orange">Entity Extraction</div>
+                    <div class="data-box data-box-blue">News Filtering & Ranking</div>
+                    <div class="data-box data-box-pink">Market Data Formatting</div>
+                    <div class="data-box data-box-teal">Indicator Selection</div>
+                </div>
+            </div>
+            
+            <div class="flow-arrow">↓</div>
+            
+            <!-- Stage 4: LLM Input Preparation -->
+            <div class="flow-stage">
+                <div class="flow-title">LLM INPUT PREPARATION</div>
+                <div class="processing-box">
+                    <strong>FORMATTED PROMPT CREATION</strong><br>
+                    Combined data formatted into structured prompt with specific sections
+                </div>
+            </div>
+            
+            <div class="flow-arrow">↓</div>
+            
+            <!-- Stage 5: LLM Processing -->
+            <div class="flow-stage">
+                <div class="flow-title">LLM PROCESSING</div>
+                <div class="processing-box">
+                    <strong>AI ANALYSIS</strong><br>
+                    OpenAI GPT analyzes all data sources to generate comprehensive response
+                </div>
+            </div>
+            
+            <div class="flow-arrow">↓</div>
+            
+            <!-- Stage 6: Output Generation -->
+            <div class="flow-stage">
+                <div class="flow-title">OUTPUT GENERATION</div>
+                <div class="flow-stage-container">
+                    <div class="data-box data-box-green">Market Analysis</div>
+                    <div class="data-box data-box-green">Directional Outlook</div>
+                    <div class="data-box data-box-green">Trade Suggestion</div>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Exact data flow details
+        st.markdown("### EXACT DATA FLOW DETAILS")
+        
+        # Create columns for the stages
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.markdown("""
+            <div style="background-color: #1a1a1a; padding: 15px; border-radius: 5px; height: 100%;">
+                <div style="color: #00ff00; font-weight: bold; margin-bottom: 10px; text-transform: uppercase;">STAGE 1: DATA COLLECTION</div>
+                <ul style="list-style-type: none; padding-left: 0;">
+                    <li style="margin-bottom: 8px;"><strong>User Query:</strong> Captured directly from user input</li>
+                    <li style="margin-bottom: 8px;"><strong>Tickers:</strong> Extracted from query using regex patterns</li>
+                    <li style="margin-bottom: 8px;"><strong>News Feed:</strong> Fetched from multiple financial RSS sources</li>
+                    <li style="margin-bottom: 8px;"><strong>Stock Data:</strong> Retrieved from Yahoo Finance API</li>
+                    <li style="margin-bottom: 8px;"><strong>Economic Data:</strong> Pulled from FRED Economic Database</li>
+                </ul>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col2:
+            st.markdown("""
+            <div style="background-color: #1a1a1a; padding: 15px; border-radius: 5px; height: 100%;">
+                <div style="color: #00ff00; font-weight: bold; margin-bottom: 10px; text-transform: uppercase;">STAGE 2: DATA PROCESSING</div>
+                <ul style="list-style-type: none; padding-left: 0;">
+                    <li style="margin-bottom: 8px;"><strong>Query Analysis:</strong> NLP processing to identify key components</li>
+                    <li style="margin-bottom: 8px;"><strong>News Relevance:</strong> Filtered by relation to query entities</li>
+                    <li style="margin-bottom: 8px;"><strong>Market Context:</strong> Price data formatted with change %</li>
+                    <li style="margin-bottom: 8px;"><strong>Economic Context:</strong> Current values compared to historical</li>
+                    <li style="margin-bottom: 8px;"><strong>Entity Resolution:</strong> Matching companies to correct tickers</li>
+                </ul>
+            </div>
+            """, unsafe_allow_html=True)
+            
+        with col3:
+            st.markdown("""
+            <div style="background-color: #1a1a1a; padding: 15px; border-radius: 5px; height: 100%;">
+                <div style="color: #00ff00; font-weight: bold; margin-bottom: 10px; text-transform: uppercase;">STAGE 3: LLM PROCESSING</div>
+                <ul style="list-style-type: none; padding-left: 0;">
+                    <li style="margin-bottom: 8px;"><strong>Prompt Creation:</strong> Data structured into standard format</li>
+                    <li style="margin-bottom: 8px;"><strong>Data Weighting:</strong> Importance assigned to different components</li>
+                    <li style="margin-bottom: 8px;"><strong>Context Building:</strong> Historical patterns identified</li>
+                    <li style="margin-bottom: 8px;"><strong>Analysis Generation:</strong> AI evaluation of market situation</li>
+                    <li style="margin-bottom: 8px;"><strong>Response Formatting:</strong> Output structured into sections</li>
+                </ul>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        # Query Transformation Map
+        st.markdown("### QUERY TRANSFORMATION MAP")
+        
+        # Create a visual transformation map
+        transformation_html = f"""
+        <div style="background-color: #1a1a1a; padding: 15px; border-radius: 5px; margin-top: 15px;">
+            <div style="color: #00ff00; font-weight: bold; margin-bottom: 15px; text-transform: uppercase;">TRANSFORMATION: USER QUERY → LLM ANALYSIS</div>
+            
+            <div style="display: flex; margin-bottom: 15px; align-items: stretch;">
+                <div style="background-color: #222; padding: 15px; border-radius: 5px; width: 45%; border-left: 3px solid #00ff00;">
+                    <div style="font-weight: bold; margin-bottom: 8px;">ORIGINAL QUERY:</div>
+                    <div style="font-family: 'Courier New', monospace; font-size: 0.9em;">{latest_query}</div>
+                </div>
+                
+                <div style="display: flex; flex-direction: column; justify-content: center; padding: 0 15px; width: 10%;">
+                    <div style="text-align: center; font-size: 24px; color: #00ff00;">→</div>
+                </div>
+                
+                <div style="background-color: #222; padding: 15px; border-radius: 5px; width: 45%; border-left: 3px solid #00ff00;">
+                    <div style="font-weight: bold; margin-bottom: 8px;">ENRICHED DATA:</div>
+                    <div style="font-family: 'Courier New', monospace; font-size: 0.9em;">
+                        <span style="color: #ff9900;">+{sum(len(entities) for entities in cleaned_entities.values())} entities</span><br>
+                        <span style="color: #ff00aa;">+{len(market_data)} market data points</span><br>
+                        <span style="color: #00aaff;">+{len(relevant_news[:3])} news headlines</span><br>
+                        <span style="color: #00ffaa;">+{len(economic_indicators)} economic indicators</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div style="text-align: center; font-size: 24px; color: #00ff00; margin: 10px 0;">↓</div>
+            
+            <div style="background-color: #222; padding: 15px; border-radius: 5px; border-left: 3px solid #00ff00;">
+                <div style="font-weight: bold; margin-bottom: 8px;">FINAL LLM ANALYSIS OUTPUT:</div>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                    <div style="background-color: #333; padding: 10px; border-radius: 5px; width: 30%;">
+                        <div style="font-weight: bold; color: #00ff00; margin-bottom: 5px;">MARKET ANALYSIS</div>
+                        <div style="font-size: 0.9em;">Current market assessment based on all input data</div>
+                    </div>
+                    
+                    <div style="background-color: #333; padding: 10px; border-radius: 5px; width: 30%;">
+                        <div style="font-weight: bold; color: #00ff00; margin-bottom: 5px;">DIRECTIONAL OUTLOOK</div>
+                        <div style="font-size: 0.9em;">Future price movement prediction with confidence level</div>
+                    </div>
+                    
+                    <div style="background-color: #333; padding: 10px; border-radius: 5px; width: 30%;">
+                        <div style="font-weight: bold; color: #00ff00; margin-bottom: 5px;">TRADE SUGGESTION</div>
+                        <div style="font-size: 0.9em;">Actionable trade recommendation with specific parameters</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        """
+        
+        st.markdown(transformation_html, unsafe_allow_html=True)
+
+    # Complete Data Breakdown
+    with st.expander("📝 COMPLETE DATA BREAKDOWN", expanded=True):
+        st.markdown("### ALL SOURCE DATA USED IN THIS QUERY")
+        
+        st.markdown("""
+        <style>
+        .data-section {
+            background-color: #1a1a1a;
+            border-radius: 5px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+        .data-section-title {
+            color: #00ff00;
+            font-weight: bold;
+            font-size: 16px;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-family: 'Courier New', monospace;
+            margin-bottom: 10px;
+        }
+        .data-table th {
+            text-align: left;
+            padding: 8px;
+            background-color: #222;
+            color: #00ff00;
+            font-weight: bold;
+            border-bottom: 1px solid #333;
+        }
+        .data-table td {
+            padding: 8px;
+            border-bottom: 1px solid #222;
+            font-size: 0.9em;
+        }
+        .data-field {
+            font-weight: bold;
+            color: #cccccc;
+        }
+        .data-value {
+            font-family: 'Courier New', monospace;
+        }
+        .json-view {
+            background-color: #222;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            max-height: 300px;
+            overflow-y: auto;
+            margin-top: 10px;
+            font-size: 0.9em;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+        
+        # Tab interface for different data types
+        tabs = st.tabs(["Overview", "Market Data", "News Articles", "Economic Indicators", "Complete JSON"])
+        
+        with tabs[0]:
+            # Overview table
+            st.markdown("""
+            <div class="data-section">
+                <div class="data-section-title">QUERY OVERVIEW</div>
+                <table class="data-table">
+                    <tr>
+                        <td class="data-field">User Query:</td>
+                        <td class="data-value">{}</td>
+                    </tr>
+                    <tr>
+                        <td class="data-field">Query Length:</td>
+                        <td class="data-value">{} characters</td>
+                    </tr>
+                    <tr>
+                        <td class="data-field">Timestamp:</td>
+                        <td class="data-value">{}</td>
+                    </tr>
+                    <tr>
+                        <td class="data-field">Total Data Points:</td>
+                        <td class="data-value">{}</td>
+                    </tr>
+                </table>
+            </div>
+            """.format(
+                latest_query,
+                len(latest_query),
+                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                sum(len(entities) for entities in cleaned_entities.values()) + 
+                len(market_data) + len(relevant_news[:3]) + len(economic_indicators) + 1  # +1 for the query itself
+            ), unsafe_allow_html=True)
+            
+            # Extracted entities
+            entities_html = "<div class='data-section'><div class='data-section-title'>EXTRACTED ENTITIES</div>"
+            
+            if any(entities for entities in cleaned_entities.values()):
+                entities_html += "<table class='data-table'><tr><th>Entity Type</th><th>Values</th></tr>"
+                for entity_type, entities in cleaned_entities.items():
+                    if entities:
+                        entities_html += f"""
+                        <tr>
+                            <td class="data-field">{entity_type.title()}</td>
+                            <td class="data-value">{', '.join(entities)}</td>
+                        </tr>
+                        """
+                entities_html += "</table>"
+            else:
+                entities_html += "<p>No entities were extracted from this query.</p>"
+            
+            entities_html += "</div>"
+            st.markdown(entities_html, unsafe_allow_html=True)
+            
+            # Data summary
+            st.markdown("""
+            <div class="data-section">
+                <div class="data-section-title">DATA SOURCE SUMMARY</div>
+                <table class="data-table">
+                    <tr>
+                        <th>Data Type</th>
+                        <th>Count</th>
+                        <th>Source</th>
+                    </tr>
+                    <tr>
+                        <td class="data-field">Market Data Points</td>
+                        <td class="data-value">{}</td>
+                        <td class="data-value">Yahoo Finance API</td>
+                    </tr>
+                    <tr>
+                        <td class="data-field">News Articles</td>
+                        <td class="data-value">{}</td>
+                        <td class="data-value">Financial RSS Feeds</td>
+                    </tr>
+                    <tr>
+                        <td class="data-field">Economic Indicators</td>
+                        <td class="data-value">{}</td>
+                        <td class="data-value">FRED Economic Database</td>
+                    </tr>
+                </table>
+            </div>
+            """.format(
+                len(market_data),
+                len(relevant_news[:3]),
+                len(economic_indicators)
+            ), unsafe_allow_html=True)
+        
+        with tabs[1]:
+            # Market data details
+            market_html = "<div class='data-section'><div class='data-section-title'>DETAILED MARKET DATA</div>"
+            
+            if market_data:
+                market_html += """
+                <table class="data-table">
+                    <tr>
+                        <th>Ticker</th>
+                        <th>Company</th>
+                        <th>Price</th>
+                        <th>Change</th>
+                        <th>Volume</th>
+                        <th>Data Source</th>
+                    </tr>
+                """
+                
+                for data in market_data:
+                    ticker = data.get("ticker", "Unknown")
+                    name = data.get("name", ticker)
+                    price = data.get("price", "N/A")
+                    change = data.get("change", "N/A")
+                    volume = data.get("volume", "N/A")
+                    
+                    # Determine color for change value
+                    change_color = "#00ff00" if "+" in change else "#ff0000" if "-" in change else "#ffffff"
+                    
+                    market_html += f"""
+                    <tr>
+                        <td class="data-field">{ticker}</td>
+                        <td class="data-value">{name}</td>
+                        <td class="data-value">{price}</td>
+                        <td class="data-value" style="color:{change_color}">{change}</td>
+                        <td class="data-value">{volume}</td>
+                        <td class="data-value">Yahoo Finance</td>
+                    </tr>
+                    """
+                
+                market_html += "</table>"
+                
+                # Add raw JSON view option
+                market_html += """
+                <div style="margin-top:15px">
+                    <div style="color:#00ff00;font-weight:bold;margin-bottom:5px">RAW MARKET DATA JSON:</div>
+                    <div class="json-view">
+                """
+                market_html += json.dumps(market_data, indent=2)
+                market_html += "</div></div>"
+                
+            else:
+                market_html += "<p>No market data was included for this query.</p>"
+            
+            market_html += "</div>"
+            st.markdown(market_html, unsafe_allow_html=True)
+        
+        with tabs[2]:
+            # News articles details
+            news_html = "<div class='data-section'><div class='data-section-title'>NEWS ARTICLES DATA</div>"
+            
+            if relevant_news:
+                news_html += """
+                <table class="data-table">
+                    <tr>
+                        <th>Source</th>
+                        <th>Date</th>
+                        <th>Headline</th>
+                        <th>Relevance</th>
+                    </tr>
+                """
+                
+                for i, news in enumerate(relevant_news[:5]):
+                    title = news.get("title", "Unknown")
+                    source = news.get("source", "Unknown")
+                    date = news.get("date", "")
+                    # Fake relevance score for demonstration
+                    relevance = 100 - (i * 15)
+                    
+                    news_html += f"""
+                    <tr>
+                        <td class="data-field">{source}</td>
+                        <td class="data-value">{date}</td>
+                        <td class="data-value">{title}</td>
+                        <td class="data-value">{relevance}%</td>
+                    </tr>
+                    """
+                
+                news_html += "</table>"
+                
+                # Add raw JSON view option
+                news_html += """
+                <div style="margin-top:15px">
+                    <div style="color:#00ff00;font-weight:bold;margin-bottom:5px">RAW NEWS DATA JSON:</div>
+                    <div class="json-view">
+                """
+                news_html += json.dumps(relevant_news[:5], indent=2)
+                news_html += "</div></div>"
+                
+            else:
+                news_html += "<p>No news articles were included for this query.</p>"
+            
+            news_html += "</div>"
+            st.markdown(news_html, unsafe_allow_html=True)
+        
+        with tabs[3]:
+            # Economic indicators details
+            econ_html = "<div class='data-section'><div class='data-section-title'>ECONOMIC INDICATORS DATA</div>"
+            
+            if economic_indicators:
+                econ_html += """
+                <table class="data-table">
+                    <tr>
+                        <th>Indicator</th>
+                        <th>Current Value</th>
+                        <th>Change</th>
+                        <th>Data Source</th>
+                    </tr>
+                """
+                
+                for indicator in economic_indicators:
+                    name = indicator.get("indicator", "Unknown")
+                    value = indicator.get("value", "N/A")
+                    change = indicator.get("change", "N/A")
+                    
+                    # Determine color for change value
+                    change_color = "#00ff00" if "+" in change else "#ff0000" if "-" in change else "#ffffff"
+                    
+                    econ_html += f"""
+                    <tr>
+                        <td class="data-field">{name}</td>
+                        <td class="data-value">{value}</td>
+                        <td class="data-value" style="color:{change_color}">{change}</td>
+                        <td class="data-value">FRED Economic Database</td>
+                    </tr>
+                    """
+                
+                econ_html += "</table>"
+                
+                # Add raw JSON view option
+                econ_html += """
+                <div style="margin-top:15px">
+                    <div style="color:#00ff00;font-weight:bold;margin-bottom:5px">RAW ECONOMIC DATA JSON:</div>
+                    <div class="json-view">
+                """
+                econ_html += json.dumps(economic_indicators, indent=2)
+                econ_html += "</div></div>"
+                
+            else:
+                econ_html += "<p>No economic indicators were included for this query.</p>"
+            
+            econ_html += "</div>"
+            st.markdown(econ_html, unsafe_allow_html=True)
+        
+        with tabs[4]:
+            # Complete JSON data
+            st.markdown("<div class='data-section-title'>COMPLETE INPUT JSON SENT TO LLM</div>", unsafe_allow_html=True)
+            st.json(llm_input)
+            
+            # Show the system and user prompts
+            st.markdown("<div class='data-section-title' style='margin-top:20px'>COMPLETE LLM PROMPT TEMPLATE</div>", unsafe_allow_html=True)
+            st.markdown("""
+            ```
+            SYSTEM PROMPT:
+            You are a financial market analyst AI assistant. Analyze the provided user query, market data, news headlines, and economic indicators to provide insights about market events, trends, and potential trade ideas.
+            
+            Structure your response in the following sections:
+            1. MARKET ANALYSIS: Provide a concise analysis of the current market situation based on the provided data.
+            2. DIRECTIONAL OUTLOOK: Offer a directional prediction based on the analysis.
+            3. TRADE SUGGESTION: If appropriate, suggest a potential trade idea with specific parameters.
+            
+            Base your analysis on facts from the provided data, not on speculation.
+            
+            USER PROMPT:
+            USER QUERY:
+            {user_query}
+            
+            EXTRACTED ENTITIES:
+            {entities}
+            
+            CURRENT MARKET DATA:
+            {market_data}
+            
+            RECENT NEWS HEADLINES:
+            {news_headlines}
+            
+            ECONOMIC INDICATORS:
+            {economic_indicators}
+            
+            Please analyze this information and provide insights about the market events, trends, and potential trade ideas.
+            ```
+            """)
+            
+            # Show token estimation
+            st.markdown("<div class='data-section-title' style='margin-top:20px'>TOKEN USAGE ESTIMATION</div>", unsafe_allow_html=True)
+            
+            # Rough token estimation
+            query_tokens = len(latest_query.split()) * 1.3
+            entity_tokens = sum(len(str(entities)) for entity_type, entities in cleaned_entities.items()) / 4
+            market_tokens = len(str(market_data)) / 4
+            news_tokens = len(str(relevant_news[:3])) / 4
+            eco_tokens = len(str(economic_indicators)) / 4
+            system_tokens = 100  # Approximate
+            
+            total_tokens = query_tokens + entity_tokens + market_tokens + news_tokens + eco_tokens + system_tokens
+            
+            # Create token estimation table
+            token_html = """
+            <table class="data-table">
+                <tr>
+                    <th>Component</th>
+                    <th>Estimated Tokens</th>
+                    <th>Percentage</th>
+                </tr>
+            """
+            
+            components = [
+                {"name": "System Prompt", "tokens": system_tokens},
+                {"name": "User Query", "tokens": query_tokens},
+                {"name": "Extracted Entities", "tokens": entity_tokens},
+                {"name": "Market Data", "tokens": market_tokens},
+                {"name": "News Articles", "tokens": news_tokens},
+                {"name": "Economic Indicators", "tokens": eco_tokens}
+            ]
+            
+            for component in components:
+                percent = (component["tokens"] / total_tokens) * 100
+                token_html += f"""
+                <tr>
+                    <td class="data-field">{component["name"]}</td>
+                    <td class="data-value">{int(component["tokens"])}</td>
+                    <td class="data-value">{percent:.1f}%</td>
+                </tr>
+                """
+            
+            token_html += f"""
+            <tr style="border-top:2px solid #333">
+                <td class="data-field" style="font-weight:bold">TOTAL</td>
+                <td class="data-value" style="font-weight:bold">{int(total_tokens)}</td>
+                <td class="data-value" style="font-weight:bold">100%</td>
+            </tr>
+            </table>
+            """
+            
+            st.markdown(token_html, unsafe_allow_html=True)
+
+# Helper functions for the dashboard
+@lru_cache(maxsize=100)
+def extract_entities_llm(query):
+    """Extract entities using LLM (simulated for now)"""
+    # In a real implementation, this would call an LLM API
+    # For now, we'll use a simple rule-based approach
+    entities = {
+        "companies": re.findall(r'\b[A-Z][A-Za-z]+\b', query),
+        "tickers": re.findall(r'\$[A-Z]+|\b[A-Z]{1,5}\b', query),
+        "sectors": []
+    }
+    
+    sector_keywords = {
+        "tech": "Technology",
+        "finance": "Financial",
+        "healthcare": "Healthcare",
+        "retail": "Retail",
+        "energy": "Energy"
+    }
+    
+    for keyword, sector in sector_keywords.items():
+        if keyword in query.lower():
+            entities["sectors"].append(sector)
+    
+    # Extract time periods
+    time_periods = re.findall(r'\b\d+\s+(?:day|week|month|year)s?\b', query.lower())
+    if time_periods:
+        entities["time_periods"] = time_periods
+    
+    return entities
+
+def clean_entities(entities):
+    """Clean and filter extracted entities to remove duplicates and common words"""
+    cleaned = {}
+    
+    common_words = {"A", "I", "AN", "THE", "IT", "IS", "ARE", "FOR", "AND", "OR", "BUY", "SELL"}
+    
+    for entity_type, entity_list in entities.items():
+        if entity_type == "tickers":
+            # Keep only tickers that look like stock symbols
+            cleaned[entity_type] = [e.replace("$", "") for e in entity_list if len(e.replace("$", "")) <= 5 and e.replace("$", "") not in common_words]
+        elif entity_type == "companies":
+            # Filter out common words
+            cleaned[entity_type] = [e for e in entity_list if e not in common_words and len(e) > 1]
+        else:
+            cleaned[entity_type] = list(set(entity_list))  # Remove duplicates
+    
+    return cleaned
+
+def get_mock_news(search_terms, limit=5):
+    """Get relevant mock news based on search terms"""
+    if not search_terms:
+        return []
+    
+    all_news = [
+        {
+            "title": "Tech Stocks Rally on Positive Earnings Reports",
+            "date": "2023-05-01",
+            "source": "Financial Times",
+            "summary": "Major tech companies reported better than expected earnings, driving a market rally.",
+            "url": "https://example.com/tech-rally"
+        },
+        {
+            "title": "Federal Reserve Signals Interest Rate Decision",
+            "date": "2023-04-28",
+            "source": "Wall Street Journal",
+            "summary": "The Federal Reserve indicated it may slow the pace of interest rate hikes in coming months.",
+            "url": "https://example.com/fed-rates"
+        },
+        {
+            "title": "AAPL Announces New Product Line",
+            "date": "2023-04-25",
+            "source": "CNBC",
+            "summary": "Apple unveiled its latest products during its annual spring event, including updates to its flagship devices.",
+            "url": "https://example.com/apple-products"
+        },
+        {
+            "title": "TSLA Reports Record Quarter",
+            "date": "2023-04-20",
+            "source": "Reuters",
+            "summary": "Tesla reported record deliveries and profits in the latest quarter, exceeding analyst expectations.",
+            "url": "https://example.com/tesla-earnings"
+        },
+        {
+            "title": "Healthcare Sector Sees Increased Investment",
+            "date": "2023-04-15",
+            "source": "Bloomberg",
+            "summary": "Investors are allocating more capital to healthcare companies amid technological advancements in the sector.",
+            "url": "https://example.com/healthcare-investment"
+        },
+        {
+            "title": "Retail Sales Decline in Q1",
+            "date": "2023-04-10",
+            "source": "Yahoo Finance",
+            "summary": "Consumer spending slowed in the first quarter, impacting retail sales across major markets.",
+            "url": "https://example.com/retail-decline"
+        },
+        {
+            "title": "Energy Sector Faces Regulatory Changes",
+            "date": "2023-04-05",
+            "source": "The Economist",
+            "summary": "New regulations aimed at reducing carbon emissions will impact energy companies' operations.",
+            "url": "https://example.com/energy-regulations"
+        }
+    ]
+    
+    # Filter news based on search terms
+    relevant_news = []
+    for news in all_news:
+        for term in search_terms:
+            if term.lower() in news["title"].lower() or term.lower() in news["summary"].lower():
+                relevant_news.append(news)
+                break
+    
+    # If no specific news matches, return general news
+    if not relevant_news:
+        return all_news[:limit]
+    
+    return relevant_news[:limit]
+
+def get_mock_market_data(tickers):
+    """Get mock market data for specified tickers"""
+    if not tickers:
+        # Return general market indices if no specific tickers
+        return [
+            {"ticker": "SPY", "name": "S&P 500 ETF", "price": "450.23", "change": "+1.2%", "volume": "65.3M"},
+            {"ticker": "QQQ", "name": "Nasdaq 100 ETF", "price": "380.45", "change": "+1.5%", "volume": "42.8M"},
+            {"ticker": "DIA", "name": "Dow Jones ETF", "price": "350.78", "change": "+0.8%", "volume": "28.9M"}
+        ]
+    
+    market_data = []
+    for ticker in tickers[:5]:  # Limit to first 5 tickers
+        try:
+            # Attempt to get real data
+            stock = yf.Ticker(ticker)
+            info = stock.info
+            current_price = info.get('currentPrice', 0) 
+            previous_close = info.get('previousClose', 0)
+            
+            if current_price and previous_close:
+                change_pct = ((current_price - previous_close) / previous_close) * 100
+                market_data.append({
+                    "ticker": ticker,
+                    "name": info.get('shortName', ticker),
+                    "price": f"${current_price:.2f}",
+                    "change": f"{'+' if change_pct >= 0 else ''}{change_pct:.2f}%",
+                    "volume": f"{info.get('volume', 0) / 1000000:.1f}M"
+                })
+            else:
+                # Fallback to mock data
+                raise Exception("Missing price data")
+                
+        except Exception:
+            # Fallback to mock data
+            price = round(100 + np.random.random() * 900, 2)
+            change = round((np.random.random() * 6) - 3, 2)
+            volume = round(np.random.random() * 100, 1)
+            
+            market_data.append({
+                "ticker": ticker,
+                "name": f"{ticker} Inc.",
+                "price": f"${price}",
+                "change": f"{'+' if change >= 0 else ''}{change}%",
+                "volume": f"{volume}M"
+            })
+    
+    return market_data
+
+def get_mock_economic_indicators():
+    """Get mock economic indicators"""
+    return [
+        {"indicator": "U.S. 10Y Treasury", "value": "3.75%", "change": "+0.05"},
+        {"indicator": "VIX Volatility Index", "value": "18.42", "change": "-0.86"},
+        {"indicator": "U.S. Unemployment", "value": "3.6%", "change": "0.00"},
+        {"indicator": "Inflation Rate (CPI)", "value": "3.2%", "change": "-0.1"},
+        {"indicator": "GDP Growth Rate", "value": "2.1%", "change": "+0.3"}
+    ]
 
 
 # Main app layout
@@ -2859,18 +3830,7 @@ def main():
         display_query_dashboard()
 
 
-def get_table_download_link(df, filename="data.csv", link_text="Download CSV"):
-    """
-    Generates a link to download the provided dataframe as a CSV file
-    """
-    csv = df.to_csv(index=False)
-    b64 = base64.b64encode(csv.encode()).decode()  # B64 encoding
-    href = (
-        f'<a href="data:file/csv;base64,{b64}" download="{filename}">⬇️ {link_text}</a>'
-    )
-    return href
-
-
+# Helper function for filtering headlines
 def filter_headlines(
     headlines,
     search_query="",

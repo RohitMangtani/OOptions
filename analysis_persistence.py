@@ -10,12 +10,13 @@ Enhanced with cloud storage capabilities and improved scalability.
 
 import os
 import json
-import datetime
 import re
 import requests
+import time
 from typing import Dict, List, Optional, Union, Any
 import logging
 from datetime import datetime
+from functools import lru_cache
 
 # Configure logging
 logging.basicConfig(
@@ -39,33 +40,28 @@ CLOUD_STORAGE_API_KEY = os.environ.get("CLOUD_STORAGE_API_KEY", "")
 class AnalysisPersistence:
     """Class to handle saving and retrieving historical analysis results"""
     
-    def __init__(self, 
-                 base_dir: str = DEFAULT_ANALYSIS_DIR, 
-                 events_file: str = DEFAULT_EVENTS_FILE,
-                 similar_events_file: str = DEFAULT_SIMILAR_EVENTS_FILE,
-                 index_file: str = DEFAULT_INDEX_FILE,
-                 use_cloud: bool = USE_CLOUD_STORAGE):
+    def __init__(self, base_path: str = None):
         """
         Initialize the persistence manager
         
         Args:
-            base_dir: Directory to store analysis files
-            events_file: File to store historical event analyses
-            similar_events_file: File to store similar events analyses
-            index_file: File to store the index of all analyses
-            use_cloud: Whether to use cloud storage when available
+            base_path: Optional custom base path for storage
         """
-        self.base_dir = base_dir
-        self.events_file = events_file
-        self.similar_events_file = similar_events_file
-        self.index_file = index_file
-        self.use_cloud = use_cloud
+        self._base_path = base_path or get_data_folder()
+        self._directory_cache = {}
         
-        # Create directories if they don't exist
-        self._ensure_directories()
+    @property
+    def base_dir(self) -> str:
+        """Return the base directory for all analysis files"""
+        return self._base_path
         
-        # Load existing indices
-        self.event_index = self._load_index()
+    def _get_formatted_timestamp(self) -> str:
+        """Get a formatted timestamp for consistent use throughout the class."""
+        return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    def _get_filename_timestamp(self) -> str:
+        """Get a timestamp formatted for filenames."""
+        return datetime.now().strftime("%Y%m%d_%H%M%S")
     
     def _ensure_directories(self) -> None:
         """Create necessary directories if they don't exist"""
@@ -76,75 +72,105 @@ class AnalysisPersistence:
         # Create subdirectories for different types of analyses
         for subdir in ['events', 'similar_events', 'queries']:
             subdir_path = os.path.join(self.base_dir, subdir)
+            # Cache the directory path
+            self._directory_cache[subdir] = subdir_path
+            
             if not os.path.exists(subdir_path):
                 os.makedirs(subdir_path)
                 logger.info(f"Created subdirectory: {subdir_path}")
     
-    def _load_index(self) -> Dict:
-        """Load the index of all analyses from disk or cloud"""
-        # Try to load from cloud first if enabled
-        if self.use_cloud:
-            try:
-                cloud_index = self._get_from_cloud(self.index_file)
-                if cloud_index:
-                    logger.info("Loaded analysis index from cloud storage")
-                    return cloud_index
-            except Exception as e:
-                logger.error(f"Error loading index from cloud: {str(e)}")
+    @lru_cache(maxsize=16)
+    def _get_subdir_path(self, analysis_type: str) -> str:
+        """Get the cached path for a specific analysis type directory."""
+        if analysis_type in self._directory_cache:
+            return self._directory_cache[analysis_type]
         
-        # Fallback to local storage
+        # If not cached, compute and cache it
+        path = os.path.join(self.base_dir, analysis_type)
+        self._directory_cache[analysis_type] = path
+        return path
+    
+    def _load_index(self) -> Dict:
+        """
+        Load the analysis index
+        
+        Returns:
+            Dict: Analysis index
+        """
+        # Default index structure
+        default_index = {
+            "events": {},
+            "similar_events": {},
+            "last_updated": self._get_formatted_timestamp(),
+            "query_history": []
+        }
+        
+        # Try to load from disk
         index_path = os.path.join(self.base_dir, self.index_file)
         if os.path.exists(index_path):
             try:
                 with open(index_path, 'r') as f:
-                    return json.load(f)
+                    loaded_index = json.load(f)
+                    logger.info(f"Loaded analysis index from {index_path}")
+                    return loaded_index
             except Exception as e:
                 logger.error(f"Error loading analysis index: {str(e)}")
-                return {"events": {}, "similar_events": {}, "last_updated": "", "query_history": []}
-        else:
-            # Create default index structure
-            return {"events": {}, "similar_events": {}, "last_updated": "", "query_history": []}
+                
+        # If loading failed or file doesn't exist, try to load from cloud
+        if self.use_cloud:
+            cloud_index = self._get_from_cloud(self.index_file)
+            if cloud_index:
+                logger.info("Loaded analysis index from cloud storage")
+                return cloud_index
+                
+        # If all else fails, return the default index
+        logger.info("Using new default analysis index")
+        return default_index
     
-    def _save_index(self) -> None:
-        """Save the index of all analyses to disk and cloud if enabled"""
-        self.event_index["last_updated"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
-        # Save to disk
-        index_path = os.path.join(self.base_dir, self.index_file)
+    def _save_index(self, analysis_data: dict, file_path: str, analysis_type: str) -> None:
+        """Save the analysis index to disk and cloud if enabled"""
         try:
+            # Update the last updated timestamp
+            self.event_index["last_updated"] = self._get_formatted_timestamp()
+            
+            # Save to disk
+            index_path = os.path.join(self.base_dir, self.index_file)
             with open(index_path, 'w') as f:
                 json.dump(self.event_index, f, indent=2)
             logger.info(f"Saved analysis index to {index_path}")
             
-            # Also save to cloud if enabled
+            # Save to cloud if enabled
             if self.use_cloud:
-                self._save_to_cloud(self.index_file, self.event_index)
-                logger.info("Saved analysis index to cloud storage")
+                self._save_to_cloud(os.path.basename(file_path), analysis_data)
+                logger.info(f"Saved {analysis_type} analysis to cloud storage")
         except Exception as e:
-            logger.error(f"Error saving analysis index: {str(e)}")
+            logger.error(f"Error saving {analysis_type} analysis: {str(e)}")
     
-    def _get_storage_path(self, analysis_type: str, key: str) -> str:
+    def _get_storage_path(self, ticker: str, event_date: str, analysis_type: str) -> str:
         """
         Get the path where an analysis should be stored
         
         Args:
+            ticker: Ticker symbol for the analysis
+            event_date: Event date for the analysis
             analysis_type: Type of analysis ('events', 'similar_events', 'queries')
-            key: Unique identifier for the analysis
             
         Returns:
             str: Path to the file where the analysis should be stored
         """
-        # Create a safe filename from the key
-        safe_key = "".join(c if c.isalnum() else "_" for c in key)
+        # Create a safe filename from the ticker and event_date
+        safe_key = f"{ticker}_{event_date}"
         safe_key = safe_key[:50]  # Limit length
         
         # Create timestamp part for uniqueness
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp = self._get_filename_timestamp()
         
         # Generate filename
         filename = f"{safe_key}_{timestamp}.json"
         
-        return os.path.join(self.base_dir, analysis_type, filename)
+        # Get the directory path from cache if possible
+        dir_path = self._get_subdir_path(analysis_type)
+        return os.path.join(dir_path, filename)
     
     def _save_to_cloud(self, filename: str, data: Dict) -> bool:
         """
@@ -200,83 +226,82 @@ class AnalysisPersistence:
         except Exception as e:
             logger.error(f"Error getting from cloud storage: {str(e)}")
             return None
+
+    def _add_metadata(self, analysis: Dict, file_path: str, query: str = None) -> Dict:
+        """Add standard metadata to an analysis."""
+        analysis_with_metadata = analysis.copy()
+        analysis_with_metadata["_metadata"] = {
+            "saved_at": self._get_formatted_timestamp(),
+            "query": query,
+            "file_path": file_path
+        }
+        return analysis_with_metadata
     
-    def save_historical_event_analysis(self, event_analysis: Dict, query: str = None) -> str:
+    def save_historical_analysis(self, analysis_data: dict) -> str:
         """
-        Save a historical event analysis to disk and cloud if enabled
+        Save a historical event analysis
         
         Args:
-            event_analysis: Dictionary containing historical event analysis
-            query: Optional query that led to this analysis
-            
-        Returns:
-            str: Path to the saved analysis file or empty string if failed
-        """
-        if not event_analysis.get("success", False):
-            logger.warning("Cannot save unsuccessful event analysis")
-            return ""
+            analysis_data: Analysis data dictionary
         
-        try:
-            # Extract key information
-            ticker = event_analysis.get("ticker", "unknown")
-            event_date = event_analysis.get("event_date", "unknown")
+        Returns:
+            Path to the saved file
+        """
+        
+        # Validate required fields
+        required_fields = ["ticker", "event_date", "price_data", "event_data"]
+        for field in required_fields:
+            if field not in analysis_data:
+                raise ValueError(f"Missing required field: {field}")
+        
+        # Ensure metadata exists
+        if "_metadata" not in analysis_data:
+            analysis_data["_metadata"] = {}
             
-            # Generate a unique key for this analysis
-            key = f"{ticker}_{event_date}"
+        # Add metadata
+        analysis_to_save = self._add_metadata(analysis_data, self._get_storage_path(
+            ticker=analysis_data["ticker"],
+            event_date=analysis_data.get("event_date"), 
+            analysis_type="historical"
+        ))
+        
+        # Save to file
+        with open(self._get_storage_path(
+            ticker=analysis_data["ticker"],
+            event_date=analysis_data.get("event_date"), 
+            analysis_type="historical"
+        ), 'w') as f:
+            json.dump(analysis_to_save, f, indent=2)
             
-            # Get storage path
-            file_path = self._get_storage_path("events", key)
+        # Update index
+        if analysis_data["ticker"] not in self.event_index["events"]:
+            self.event_index["events"][analysis_data["ticker"]] = []
+        
+        # Add to index
+        self.event_index["events"][analysis_data["ticker"]].append({
+            "event_date": analysis_data.get("event_date"),
+            "price_change": analysis_data.get("price_change_pct", 0),
+            "trend": analysis_data.get("trend", "Unknown"),
+            "file_path": self._get_storage_path(
+                ticker=analysis_data["ticker"],
+                event_date=analysis_data.get("event_date"), 
+                analysis_type="historical"
+            ),
+            "saved_at": analysis_to_save["_metadata"]["saved_at"]
+        })
+        
+        # Save updated index
+        self._save_index(analysis_to_save, self._get_storage_path(
+            ticker=analysis_data["ticker"],
+            event_date=analysis_data.get("event_date"), 
+            analysis_type="historical"
+        ), "historical")
             
-            # Add metadata
-            analysis_to_save = event_analysis.copy()
-            analysis_to_save["_metadata"] = {
-                "saved_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "query": query,
-                "file_path": file_path
-            }
-            
-            # Save to disk
-            with open(file_path, 'w') as f:
-                json.dump(analysis_to_save, f, indent=2)
-            
-            # Save to cloud if enabled
-            if self.use_cloud:
-                self._save_to_cloud(os.path.basename(file_path), analysis_to_save)
-            
-            # Update index
-            if ticker not in self.event_index["events"]:
-                self.event_index["events"][ticker] = []
-            
-            # Add to index
-            self.event_index["events"][ticker].append({
-                "event_date": event_date,
-                "price_change": event_analysis.get("price_change_pct", 0),
-                "trend": event_analysis.get("trend", "Unknown"),
-                "file_path": file_path,
-                "saved_at": analysis_to_save["_metadata"]["saved_at"]
-            })
-            
-            # Add to query history if query was provided
-            if query:
-                query_entry = {
-                    "query": query,
-                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    "result_type": "historical_event",
-                    "ticker": ticker,
-                    "event_date": event_date,
-                    "file_path": file_path
-                }
-                self.event_index["query_history"].append(query_entry)
-            
-            # Save updated index
-            self._save_index()
-            
-            logger.info(f"Saved historical event analysis for {ticker} on {event_date} to {file_path}")
-            return file_path
-            
-        except Exception as e:
-            logger.error(f"Error saving historical event analysis: {str(e)}")
-            return ""
+        return self._get_storage_path(
+            ticker=analysis_data["ticker"],
+            event_date=analysis_data.get("event_date"), 
+            analysis_type="historical"
+        )
     
     def save_similar_events_analysis(self, similar_events_analysis: Dict, query: str = None) -> str:
         """
@@ -302,15 +327,10 @@ class AnalysisPersistence:
             key = f"{ticker}_{pattern}"
             
             # Get storage path
-            file_path = self._get_storage_path("similar_events", key)
+            file_path = self._get_storage_path(ticker, similar_events_analysis.get("event_date", "unknown"), "similar_events")
             
             # Add metadata
-            analysis_to_save = similar_events_analysis.copy()
-            analysis_to_save["_metadata"] = {
-                "saved_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "query": query,
-                "file_path": file_path
-            }
+            analysis_to_save = self._add_metadata(similar_events_analysis, file_path, query)
             
             # Save to disk
             with open(file_path, 'w') as f:
@@ -337,7 +357,7 @@ class AnalysisPersistence:
             if query:
                 query_entry = {
                     "query": query,
-                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "timestamp": self._get_formatted_timestamp(),
                     "result_type": "similar_events",
                     "pattern": pattern,
                     "dominant_ticker": ticker,
@@ -346,7 +366,7 @@ class AnalysisPersistence:
                 self.event_index["query_history"].append(query_entry)
             
             # Save updated index
-            self._save_index()
+            self._save_index(analysis_to_save, file_path, "similar_events")
             
             logger.info(f"Saved similar events analysis for {pattern} to {file_path}")
             return file_path
@@ -367,11 +387,11 @@ class AnalysisPersistence:
         Returns:
             Dict: Paths to saved files
         """
-        result = {"query": query, "saved_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+        result = {"query": query, "saved_at": self._get_formatted_timestamp()}
         
         # Save historical event analysis if provided
         if event_analysis and event_analysis.get("success", False):
-            event_path = self.save_historical_event_analysis(event_analysis, query)
+            event_path = self.save_historical_analysis(event_analysis)
             if event_path:
                 result["event_analysis_path"] = event_path
         
@@ -382,7 +402,7 @@ class AnalysisPersistence:
                 result["similar_events_path"] = similar_path
         
         # Get a path for the complete query result
-        query_path = self._get_storage_path("queries", query)
+        query_path = self._get_storage_path("queries", query, "queries")
         
         # Save the complete result
         try:
@@ -628,7 +648,7 @@ def save_historical_analysis(event_analysis: Dict, query: str = None) -> str:
     Returns:
         str: Path to the saved file
     """
-    return get_persistence_manager().save_historical_event_analysis(event_analysis, query)
+    return get_persistence_manager().save_historical_analysis(event_analysis)
 
 def save_similar_events_analysis(similar_events_analysis: Dict, query: str = None) -> str:
     """
@@ -743,7 +763,7 @@ if __name__ == "__main__":
     }
     
     # Test saving and loading
-    event_path = persistence.save_historical_event_analysis(sample_event_analysis, "What happened when Bitcoin ETF was approved?")
+    event_path = persistence.save_historical_analysis(sample_event_analysis)
     similar_path = persistence.save_similar_events_analysis(sample_similar_events, "What happened when Bitcoin ETF was approved?")
     
     # Print statistics
