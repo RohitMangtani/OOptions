@@ -1,0 +1,12 @@
+warning: in the working copy of '.gitignore', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'pipeline.log', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'streamlit_app.py', LF will be replaced by CRLF the next time Git touches it
+.env
+.env.example
+README.md
+__pycache__/llm_event_classifier.cpython-311.pyc
+__pycache__/llm_event_query.cpython-311.pyc
+macro_data_cache.json
+pipeline.log
+sentiment_data_cache.json

@@ -4,7 +4,7 @@ LOGGER MODULE
 ============
 
 This module provides a standardized logging setup for the options pipeline system.
-It configures loggers to output both to the console and to a log file.
+It configures loggers to output both to the console and to a log file with rotation.
 
 How to Use:
 ----------
@@ -29,7 +29,7 @@ Available Log Levels:
 
 Configuration:
 ------------
-- Logs are saved to: pipeline.log
+- Logs are saved to: pipeline.log with rotation (5MB max size, 3 backup files)
 - Console output shows: INFO and above
 - File output saves: DEBUG and above
 - Log format includes: timestamp, log level, module name, and message
@@ -40,24 +40,31 @@ import os
 import sys
 from typing import Optional
 from datetime import datetime
+from logging.handlers import RotatingFileHandler
 
 # Constants
 LOG_FILE = "pipeline.log"
 LOG_FORMAT = "%(asctime)s - %(levelname)s - %(name)s - %(message)s"
 DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
+MAX_LOG_SIZE = 5 * 1024 * 1024  # 5 MB
+BACKUP_COUNT = 3  # Keep 3 backup files
 
 # Track if logging has been configured
 _logging_configured = False
 
 def configure_logging(log_file: str = LOG_FILE, console_level: int = logging.INFO, 
-                     file_level: int = logging.DEBUG) -> None:
+                     file_level: int = logging.DEBUG, 
+                     max_size: int = MAX_LOG_SIZE,
+                     backup_count: int = BACKUP_COUNT) -> None:
     """
-    Configure the logging system to output to both console and file.
+    Configure the logging system to output to both console and file with rotation.
     
     Args:
         log_file: Path to the log file
         console_level: Minimum log level for console output
         file_level: Minimum log level for file output
+        max_size: Maximum size of log file before rotation (bytes)
+        backup_count: Number of backup log files to keep
     """
     global _logging_configured
     
@@ -76,14 +83,18 @@ def configure_logging(log_file: str = LOG_FILE, console_level: int = logging.INF
     console_handler.setFormatter(formatter)
     root_logger.addHandler(console_handler)
     
-    # Configure file handler
+    # Configure rotating file handler
     try:
         # Create directory for log file if it doesn't exist
         log_dir = os.path.dirname(log_file)
         if log_dir and not os.path.exists(log_dir):
             os.makedirs(log_dir)
             
-        file_handler = logging.FileHandler(log_file)
+        file_handler = RotatingFileHandler(
+            log_file, 
+            maxBytes=max_size, 
+            backupCount=backup_count
+        )
         file_handler.setLevel(file_level)
         file_handler.setFormatter(formatter)
         root_logger.addHandler(file_handler)
@@ -94,7 +105,8 @@ def configure_logging(log_file: str = LOG_FILE, console_level: int = logging.INF
     
     _logging_configured = True
     root_logger.info(f"Logging configured: console={logging.getLevelName(console_level)}, "
-                    f"file={logging.getLevelName(file_level)} at {log_file}")
+                    f"file={logging.getLevelName(file_level)} at {log_file} "
+                    f"(max size: {max_size//1024//1024}MB, backups: {backup_count})")
 
 def get_logger(name: str) -> logging.Logger:
     """

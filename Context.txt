@@ -3,7 +3,7 @@ Read file: Context.txt
 {
   "project": "Ooptions - Financial News and Market Event Analysis System",
   "description": "A comprehensive system for analyzing financial news headlines, classifying market events, matching them to historical patterns, generating trading recommendations based on macro data and event analysis, and evaluating trade performance.",
-  "version": "1.1.0",
+  "version": "1.4.5",
   "api_dependencies": {
     "openai": {
       "description": "Used for headline classification and trade recommendation generation",
@@ -113,7 +113,12 @@ Read file: Context.txt
         "storage": "analysis_history/ directory structure",
         "components": ["events/", "similar_events/", "queries/", "analysis_index.json"],
         "cloud_integration": "Optional via CLOUD_STORAGE_API_KEY",
-        "code_content": "Handles storage of analysis data and supports cloud integration."
+        "code_content": "Handles storage of analysis data and supports cloud integration. Recently optimized with timestamp methods and directory caching.",
+        "optimizations": {
+          "timestamp_handling": "Reusable methods for timestamp generation",
+          "path_caching": "Directory path caching with LRU cache for performance",
+          "functions": ["_get_formatted_timestamp()", "_get_filename_timestamp()", "_get_subdir_path()"]
+        }
       },
       "evaluation": {
         "purpose": "Evaluates trade performance",
@@ -127,10 +132,40 @@ Read file: Context.txt
     "cli": {
       "main": "python llm_event_query.py \"query text\"",
       "view_trades": "python view_trades.py [view|stats]",
-      "view_analysis": "python view_analysis.py [list|show|history|stats|export|delete|reindex]"
+      "view_analysis": "python view_analysis.py [list|show|history|stats|export|delete|reindex|cleanup]",
+      "files": {
+        "view_trades": "view_trades.py (7.6KB, 233 lines)",
+        "view_analysis": "view_analysis.py (31KB, 997 lines)"
+      },
+      "view_analysis_features": {
+        "description": "Command-line tool for viewing and managing analysis results",
+        "commands": {
+          "list": "List saved analyses with filtering options",
+          "show": "Display detailed information about a specific analysis",
+          "history": "View query history with search capabilities and export option",
+          "stats": "Show statistics about saved analyses",
+          "export": "Export analyses to a file with batch processing",
+          "delete": "Delete a specific analysis with smart metadata handling and skip confirmation option",
+          "reindex": "Rebuild the analysis index from scratch",
+          "cleanup": "Clean up temporary files that might be left over from incomplete operations"
+        },
+        "optimizations": {
+          "caching": "LRU caching for file operations (@lru_cache) to reduce disk I/O operations",
+          "batch_processing": "Process files in smaller batches to optimize memory usage",
+          "modular_design": "Helper functions for better code organization and reuse",
+          "progress_reporting": "User feedback during lengthy operations",
+          "statistics_caching": "Cache for statistics to avoid recalculating them frequently",
+          "path_optimization": "Utility to convert absolute paths to relative paths for memory efficiency",
+          "script_friendly": "Options to skip confirmations for automated usage in scripts"
+        }
+      }
     },
     "web": {
-      "streamlit": "python streamlit_app.py"
+      "streamlit": "streamlit run streamlit_app.py",
+      "files": {
+        "main_app": "streamlit_app.py (98KB, 2978 lines)",
+        "readme": "README_STREAMLIT.md (3.5KB, 86 lines)"
+      }
     }
   },
   "data_flow": [
@@ -141,127 +176,88 @@ Read file: Context.txt
   ],
   "authentication": {
     "openai_api": {
-      "status": "Needs valid API key in .env file",
+      "status": "Needs valid API key in .env file or Streamlit secrets",
+      "environment_variable": "OPENAI_API_KEY",
+      "fallback_variables": ["OPENAI_KEY", "TOMI_OPENAI_KEY"],
       "fallback": "DummyClassifier provides rule-based classification"
     },
     "fred_api": {
       "status": "Working",
-      "configuration": "FRED_API_KEY in environment variables"
+      "environment_variable": "FRED_API_KEY",
+      "fallback_variables": ["TOMI_FRED_API_KEY"],
+      "configuration": "FRED_API_KEY in environment variables or Streamlit secrets"
     }
   },
-  "key_data_models": {
-    "headline": {
-      "title": "string",
-      "source": "string",
-      "published": "timestamp",
-      "summary": "string (optional)",
-      "url": "string (optional)"
+  "performance_optimizations": {
+    "file_operations": {
+      "description": "Optimized file I/O operations with caching",
+      "implementation": {
+        "analysis_persistence.py": "Directory path caching and timestamp optimization",
+        "view_analysis.py": "File content caching with @lru_cache for reduced disk reads",
+        "key_functions": ["_load_analysis_with_cache()", "_get_full_path()", "_get_cached_statistics()"]
+      },
+      "benefits": [
+        "Significant reduction in redundant disk I/O operations",
+        "Improved response time for file-heavy operations",
+        "Better user experience with faster data retrieval"
+      ]
     },
-    "classification": {
-      "event_type": "string",
-      "sentiment": "string (Bullish, Bearish, Neutral)",
-      "sector": "string",
-      "event_tags": "dictionary of boolean tags",
-      "direction": "string (BUY/SELL)"
+    "memory_management": {
+      "description": "Optimized memory usage for large datasets",
+      "implementation": {
+        "view_analysis.py": "Batch processing for heavy operations",
+        "key_improvements": [
+          "Process files in configurable batch sizes",
+          "Display_analyses_batch in list_analyses",
+          "Process_analyses_batch in export_analyses",
+          "Modular section formatting in show_analysis",
+          "Path optimization with relative paths",
+          "Limited display for large data lists"
+        ]
+      },
+      "benefits": [
+        "Reduced memory footprint when processing large datasets",
+        "Better performance with limited system resources",
+        "Progressive processing with user feedback",
+        "More responsive application even with large analysis files"
+      ]
     },
-    "trade_idea": {
-      "ticker": "string",
-      "trade_type": "string (option/equity)",
-      "option_type": "string (CALL/PUT)",
-      "strike": "number/string (e.g., 180.0 or 'ATM')",
-      "expiry": "string (date or period)",
-      "direction": "string (BUY/SELL)",
-      "rationale": "string"
+    "code_structure": {
+      "description": "Improved code organization and maintainability",
+      "implementation": {
+        "view_analysis.py": "Consolidated redundant code with helper functions",
+        "key_improvements": [
+          "Helper functions like clean_matching_files to eliminate code duplication",
+          "Nested function definitions for better scoping",
+          "Shared utility functions for path handling",
+          "Improved error handling with specific error messages"
+        ]
+      },
+      "benefits": [
+        "Easier maintenance and future enhancements",
+        "Better readability and code organization",
+        "Simplified debugging and testing",
+        "Reduced cognitive load when working with the codebase"
+      ]
     },
-    "similar_event": {
-      "event_summary": "string",
-      "event_date": "string (YYYY-MM-DD)",
-      "match_score": "number (0.0-1.0)",
-      "price_change_pct": "number",
-      "affected_ticker": "string"
-    },
-    "trade_record": {
-      "headline": "headline object",
-      "similar_events": "array of similar_event objects",
-      "trade_idea": "trade_idea object",
-      "timestamp": "timestamp",
-      "saved_timestamp": "timestamp",
-      "macro_snapshot": "macro indicator dictionary",
-      "options_snapshot": "options metrics dictionary",
-      "technical_indicators": "technical indicator dictionary",
-      "event_tags": "dictionary of boolean tags",
-      "prompt_enhancers": "dictionary of prompt enhancements"
+    "automation_support": {
+      "description": "Added features for automation and scripting",
+      "implementation": {
+        "view_analysis.py": "Skip confirmation options and export capabilities",
+        "key_improvements": [
+          "Added --force flag to delete command for skipping confirmation",
+          "Implemented export option for query history",
+          "Return values to indicate success/failure for script integration",
+          "Cleanup utility for maintenance automation"
+        ]
+      },
+      "benefits": [
+        "Better support for automated workflows",
+        "Integration with CI/CD pipelines",
+        "Script-friendly interface for maintenance tasks",
+        "More consistent state management"
+      ]
     }
-  },
-  "ui_styling": {
-    "description": "The application uses a clean, modern terminal-inspired interface with consistent styling across all components",
-    "color_scheme": {
-      "background": "#121212",
-      "panels": "#1a1a1a",
-      "text": "#ffffff",
-      "accent": "#00ff00",
-      "positive": "#00ff00",
-      "negative": "#00aa00",
-      "borders": "#333333",
-      "muted_text": "#cccccc"
-    },
-    "typography": {
-      "primary_font": "'Courier New', monospace",
-      "text_size": {
-        "standard": "0.85rem",
-        "small": "0.75rem",
-        "headers": "1.2rem"
-      },
-      "text_transform": "UPPERCASE for headers and important elements"
-    },
-    "components": {
-      "tabs": {
-        "style": "Dark background with green highlight for selected tab",
-        "colors": "Selected: #333333 background with #ffffff text and #00ff00 border-top",
-        "unselected": "#1a1a1a background with #cccccc text"
-      },
-      "buttons": {
-        "style": "Dark background with white text and rounded corners",
-        "hover": "Subtle highlight on hover with green text",
-        "text_transform": "UPPERCASE"
-      },
-      "news_feed": {
-        "layout": "Terminal-style grid with columns for headline, date, time, and source",
-        "headlines": "White text for headlines, green for sources",
-        "dates": "Muted gray text for timestamps",
-        "hover_effect": "Subtle highlight and green left border on hover",
-        "corners": "Rounded corners (4px radius) for all containers"
-      },
-      "chat_interface": {
-        "user_messages": "Dark background with green left border and white text",
-        "assistant_messages": "Dark background with green left border and green text",
-        "prefixes": "QUERY > for user, OPT_BOT > for assistant responses",
-        "corners": "Rounded corners (4px radius) for all message boxes"
-      },
-      "status_bar": {
-        "position": "Fixed at bottom",
-        "style": "Dark background with session info and current time"
-      }
-    },
-    "interactive_elements": {
-      "refresh_indicator": "Green blinking dot for visual feedback during data refresh",
-      "draggable_widgets": "Support for draggable and resizable panels with header controls"
-    },
-    "design_principles": [
-      "Maintain dark theme with green accents throughout the application",
-      "Use darker gray (#121212) for main background and lighter gray (#1a1a1a) for panels",
-      "All text should be white (#ffffff) for maximum readability",
-      "Use green (#00ff00) for all accent elements and highlights",
-      "Add rounded corners (4px radius) to all containers and interactive elements",
-      "Prioritize information density while maintaining readability",
-      "Use uppercase text for headers, buttons, and important UI elements",
-      "Keep borders subtle with #333333 color",
-      "Ensure all text has proper contrast with backgrounds",
-      "Use monospace fonts consistently throughout the interface",
-      "Support both command interface and news feed through tabbed layout",
-      "Provide visual feedback for data updates and user actions"
-    ],
-    "implementation": "CSS styles are implemented directly in streamlit_app.py using st.markdown with unsafe_allow_html=True"
   },
   "current_issues": [
     "Need valid OpenAI API key in environment variables",
@@ -273,7 +269,12 @@ Read file: Context.txt
     "Add more robust error handling for external API dependencies",
     "Expand cryptocurrency support and specialized analysis",
     "Develop comprehensive backtesting framework",
-    "Add real-time alerting for high-confidence trade signals"
+    "Add real-time alerting for high-confidence trade signals",
+    "Add proper logging system instead of print statements",
+    "Implement configuration management for constants and settings",
+    "Add file locking for multi-user access",
+    "Improve path security to prevent traversal attacks",
+    "Add performance monitoring and metrics"
   ],
   "styling_guidelines": [
     "IMPORTANT: Maintain the modern terminal-inspired dark theme throughout all features",
@@ -307,5 +308,5 @@ Read file: Context.txt
     "NEVER USE DUMMY VARIABLES OR FALLBACKS INSTEAD OF ACTUAL API SERVICES",
     "ALWAYS USE THE PROVIDED API KEYS - NEVER SUBSTITUTE WITH PLACEHOLDERS OR DUMMY IMPLEMENTATIONS"
   ]
-}
-```
+}```
+

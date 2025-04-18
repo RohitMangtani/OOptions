@@ -238,31 +238,56 @@ def scan_for_opportunities():
                 if opportunity:
                     new_opportunities[time_frame].append(opportunity)
         
+        # Define opportunity sorting key function once to avoid duplication
+        def priority_score_key(o):
+            # Convert priority to numeric value (high=0, medium=1, low=2)
+            priority_value = 0 if o["priority"] == "high" else 1 if o["priority"] == "medium" else 2
+            # Use negative match score so higher scores sort first
+            match_score = -float(o.get("match_score", 0))
+            return (priority_value, match_score)
+        
         # Update the global trading opportunities
         with opportunity_lock:
             for time_frame in TIME_FRAMES:
-                # Sort new opportunities by priority and match score
-                sorted_opportunities = sorted(
-                    new_opportunities[time_frame],
-                    key=lambda o: (
-                        0 if o["priority"] == "high" else 1 if o["priority"] == "medium" else 2,
-                        -float(o.get("match_score", 0))
-                    )
-                )
-                
-                # Merge with existing opportunities, keeping only the best MAX_OPPORTUNITIES
+                # Get current opportunities for this time frame
                 current = trading_opportunities[time_frame]
-                merged = sorted_opportunities + current
                 
-                # Sort again and limit to MAX_OPPORTUNITIES
-                merged = sorted(
-                    merged,
-                    key=lambda o: (
-                        0 if o["priority"] == "high" else 1 if o["priority"] == "medium" else 2,
-                        -float(o.get("match_score", 0))
-                    )
-                )[:MAX_OPPORTUNITIES]
+                # If no new opportunities, keep current ones as they are
+                if not new_opportunities[time_frame]:
+                    continue
                 
+                # Sort new opportunities by priority and match score
+                sorted_opportunities = sorted(new_opportunities[time_frame], key=priority_score_key)
+                
+                # Merge with existing opportunities (no need to concatenate and re-sort)
+                # This approach is more efficient as we only sort once and merge in sorted order
+                merged = []
+                i, j = 0, 0
+                
+                # Only do the merge if we have existing opportunities
+                if current:
+                    # Re-sort current opportunities to ensure they use the same sorting logic
+                    sorted_current = sorted(current, key=priority_score_key)
+                    
+                    # Merge while maintaining sorted order (similar to merge sort)
+                    while i < len(sorted_opportunities) and j < len(sorted_current) and len(merged) < MAX_OPPORTUNITIES:
+                        if priority_score_key(sorted_opportunities[i]) <= priority_score_key(sorted_current[j]):
+                            merged.append(sorted_opportunities[i])
+                            i += 1
+                        else:
+                            merged.append(sorted_current[j])
+                            j += 1
+                
+                # Add any remaining opportunities up to MAX_OPPORTUNITIES
+                while i < len(sorted_opportunities) and len(merged) < MAX_OPPORTUNITIES:
+                    merged.append(sorted_opportunities[i])
+                    i += 1
+                
+                while j < len(current) and len(merged) < MAX_OPPORTUNITIES:
+                    merged.append(current[j])
+                    j += 1
+                
+                # Update the global opportunities
                 trading_opportunities[time_frame] = merged
         
         logger.info("Opportunity scan complete")
